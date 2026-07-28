@@ -1,0 +1,50 @@
+agent:
+  module: omnirl.algorithms.c51_dqn
+modules:
+  learner:
+    gamma: 0.99
+    tau: 0.005
+    lr: 0.0003
+    max_grad_norm: 10.0
+    num_atoms: 51
+    v_min: -300
+    v_max: 300
+  memory:
+    batch_size: 128
+    warmup_size: 10000
+    max_size: 100000
+    replay_ratio: 1
+  policy:
+    epsilon_start: 1.0
+    epsilon_end: 0.1
+    decay_steps: 100000
+    random_warmup: true
+    num_atoms: 51
+    v_min: -300
+    v_max: 300
+  network:
+    mlp_hidden_dims:
+    - 256
+    - 256
+env:
+  module: omnirl.envs.gymnasium
+  id: LunarLander-v3
+  render_mode: null
+runner:
+  ckpt_dir: /root/project/HCB/GD2/GameRobot2/checkpoints/algorithm_validation/lunar_lander/c51-2
+  eval_model: null
+  num_learners: 1
+  num_samplers: 1
+  num_evaluators: 2
+  num_episodes: 25
+  max_updates: 500000
+  save_interval: 3600
+  log_interval: 60
+  log_name: log.csv
+  load_checkpoint: true
+device:
+  learner: gpu
+seed:
+  learner: 2
+  sampler: 2
+  evaluator: 2

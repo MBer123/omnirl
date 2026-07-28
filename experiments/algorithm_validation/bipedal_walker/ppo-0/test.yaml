@@ -1,0 +1,13 @@
+env:
+  module: omnirl.envs.gymnasium
+  id: BipedalWalker-v3
+  render_mode: null
+
+runner:
+  ckpt_dir: results/algorithm_validation/bipedal_walker/ppo-0
+  eval_model: agent_24415.pth
+  num_evaluators: 2
+  num_episodes: 25
+
+seed:
+  evaluator: 0

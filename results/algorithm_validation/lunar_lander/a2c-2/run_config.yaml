@@ -1,0 +1,50 @@
+agent:
+  name: a2c
+  module: agents.policy_based.a2c
+modules:
+  learner:
+    gamma: 0.99
+    lambda_: 0.95
+    ent_coef: 0.02
+    vf_coef: 0.5
+    actor_lr: 0.0003
+    critic_lr: 0.0003
+    max_grad_norm: 0.5
+  memory:
+    unroll_length: 32
+    max_chunks: 64
+  network:
+    actor:
+      mlp_hidden_dims:
+      - 256
+      - 256
+    critic:
+      mlp_hidden_dims:
+      - 256
+      - 256
+  sampler:
+    unroll_length: 32
+pipeline:
+  name: gym
+  module: pipeline.runner
+env:
+  id: LunarLander-v3
+  render_mode: null
+runner:
+  ckpt_dir: checkpoints/a2c-2/Lunar Lander
+  eval_model: null
+  num_learners: 1
+  num_samplers: 10
+  num_evaluators: 2
+  num_episodes: 25
+  max_updates: 24415
+  save_interval: 3600
+  log_interval: 60
+  log_name: log.csv
+  load_checkpoint: true
+device:
+  learner: gpu
+seed:
+  learner: 2
+  sampler: 2
+  evaluator: 2

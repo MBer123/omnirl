@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- SUMO-RL discovers the four green phases and synthesizes pairwise transitions. -->
+<additional>
+    <tlLogic id="t" type="static" programID="0" offset="0">
+        <phase duration="30" state="GGrrrrGGrrrr" name="north-south through/right"/>
+        <phase duration="3" state="yyrrrryyrrrr" name="north-south through/right yellow"/>
+        <phase duration="15" state="rrGrrrrrGrrr" name="north-south protected left"/>
+        <phase duration="3" state="rryrrrrryrrr" name="north-south protected-left yellow"/>
+        <phase duration="30" state="rrrGGrrrrGGr" name="east-west through/right"/>
+        <phase duration="3" state="rrryyrrrryyr" name="east-west through/right yellow"/>
+        <phase duration="15" state="rrrrrGrrrrrG" name="east-west protected left"/>
+        <phase duration="3" state="rrrrryrrrrry" name="east-west protected-left yellow"/>
+    </tlLogic>
+</additional>

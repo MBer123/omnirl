@@ -1,0 +1,32 @@
+agent:
+  module: omnirl.algorithms.ddpg
+
+modules:
+  learner:
+    gamma: 0.99
+    tau: 0.005
+    actor_lr: 0.0003
+    critic_lr: 0.0003
+
+  memory:
+    batch_size: 256
+    warmup_size: 10000
+    max_size: 300000
+    replay_ratio: 1
+
+  policy:
+    action_noise: 0.1
+    random_warmup: true
+
+  network:
+    actor:
+      layer_type: MLP
+      mlp_hidden_dims:
+      - 256
+      - 256
+
+    critic:
+      layer_type: MLP
+      mlp_hidden_dims:
+      - 256
+      - 256

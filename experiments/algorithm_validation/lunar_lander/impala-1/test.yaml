@@ -1,0 +1,13 @@
+env:
+  module: omnirl.envs.gymnasium
+  id: LunarLander-v3
+  render_mode: null
+
+runner:
+  ckpt_dir: results/algorithm_validation/lunar_lander/impala-1
+  eval_model: agent_24415.pth
+  num_evaluators: 2
+  num_episodes: 25
+
+seed:
+  evaluator: 1

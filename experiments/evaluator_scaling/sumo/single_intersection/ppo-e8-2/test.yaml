@@ -1,0 +1,26 @@
+env:
+  module: omnirl.envs.sumo
+  net_file: experiments/environment_integration/sumo/single_intersection/scenario/single-intersection.net.xml
+  route_file: experiments/environment_integration/sumo/single_intersection/scenario/single-intersection.rou.xml
+  num_seconds: 3600
+  delta_time: 5
+  yellow_time: 3
+  min_green: 10
+  reward_fn: diff-waiting-time
+  sumo_warnings: false
+  additional_sumo_cmd: --no-step-log
+  render_mode: null
+
+runner:
+  ckpt_dir: results/environment_integration/sumo/single_intersection/ppo-2
+  eval_model: agent_500.pth
+  num_learners: 1
+  num_samplers: 1
+  num_evaluators: 8
+  num_episodes: 5
+
+device:
+  learner: cpu
+
+seed:
+  evaluator: 2

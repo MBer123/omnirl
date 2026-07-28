@@ -1,0 +1,48 @@
+agent:
+  module: omnirl.algorithms.impala
+modules:
+  learner:
+    gamma: 0.99
+    ent_coef: 0.02
+    vf_coef: 0.5
+    rho_bar: 1.0
+    c_bar: 1.0
+    actor_lr: 0.0003
+    critic_lr: 0.0003
+    max_grad_norm: 0.5
+  memory:
+    unroll_length: 32
+    max_chunks: 64
+    store_log_probs: true
+    track_version: false
+  network:
+    actor:
+      mlp_hidden_dims:
+      - 256
+      - 256
+    critic:
+      mlp_hidden_dims:
+      - 256
+      - 256
+env:
+  module: omnirl.envs.gymnasium
+  id: LunarLander-v3
+  render_mode: null
+runner:
+  ckpt_dir: checkpoints/experiments/sampler_scaling/lunar_lander/impala-s1-1
+  eval_model: null
+  num_learners: 1
+  num_samplers: 1
+  num_evaluators: 1
+  num_episodes: 25
+  max_updates: 2500
+  save_interval: 3600
+  log_interval: 30
+  log_name: log.csv
+  load_checkpoint: true
+device:
+  learner: gpu
+seed:
+  learner: 1
+  sampler: 1
+  evaluator: 1
