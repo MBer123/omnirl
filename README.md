@@ -1,5 +1,7 @@
 # OmniRL
 
+English | [简体中文](README.zh-CN.md)
+
 OmniRL is a distributed reinforcement learning framework built on Python, Ray, and PyTorch. It provides a common runtime for asynchronous sampling, replay and rollout storage, distributed learning, versioned weight synchronization, evaluation, logging, and checkpoint recovery. The framework includes 13 value-based and actor-critic algorithms for discrete and continuous control.
 
 ## Architecture
