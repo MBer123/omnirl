@@ -19,6 +19,7 @@ modules:
     track_version: true
   network:
     actor:
+      layer_type: CNN
       conv_layers:
       - - 32
         - 8
@@ -31,6 +32,7 @@ modules:
       conv_hidden_dims:
       - 256
     critic:
+      layer_type: CNN
       conv_layers:
       - - 32
         - 8
@@ -51,7 +53,7 @@ env:
   screen_format: RGB24
   render_mode: null
 runner:
-  ckpt_dir: checkpoints/environment_integration/vizdoom/defend_the_center/ppo-2
+  ckpt_dir: results/environment_integration/vizdoom/defend_the_center/ppo-2
   eval_model: null
   num_learners: 1
   num_samplers: 8

@@ -1,6 +1,5 @@
 agent:
-  name: impala
-  module: agents.policy_based.impala
+  module: omnirl.algorithms.impala
 modules:
   learner:
     gamma: 0.99
@@ -14,27 +13,27 @@ modules:
   memory:
     unroll_length: 32
     max_chunks: 64
-  sampler:
-    unroll_length: 32
+    store_log_probs: true
+    track_version: false
   network:
     actor:
+      layer_type: MLP
       mlp_hidden_dims:
       - 256
       - 256
       log_std_min: -20.0
       log_std_max: 2.0
     critic:
+      layer_type: MLP
       mlp_hidden_dims:
       - 256
       - 256
-pipeline:
-  name: gym
-  module: pipeline.runner
 env:
+  module: omnirl.envs.gymnasium
   id: BipedalWalker-v3
   render_mode: null
 runner:
-  ckpt_dir: checkpoints/impala-1/Bipedal Walker
+  ckpt_dir: results/algorithm_validation/bipedal_walker/impala-1
   eval_model: null
   num_learners: 1
   num_samplers: 10

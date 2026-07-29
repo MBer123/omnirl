@@ -1,6 +1,5 @@
 agent:
-  name: ppo
-  module: agents.policy_based.ppo
+  module: omnirl.algorithms.ppo
 modules:
   learner:
     gamma: 0.99
@@ -16,25 +15,24 @@ modules:
   memory:
     unroll_length: 32
     max_chunks: 64
-  sampler:
-    unroll_length: 32
+    store_log_probs: true
   network:
     actor:
+      layer_type: MLP
       mlp_hidden_dims:
       - 256
       - 256
     critic:
+      layer_type: MLP
       mlp_hidden_dims:
       - 256
       - 256
-pipeline:
-  name: gym
-  module: pipeline.runner
 env:
+  module: omnirl.envs.gymnasium
   id: LunarLander-v3
   render_mode: null
 runner:
-  ckpt_dir: checkpoints/ppo-2/Lunar Lander
+  ckpt_dir: results/algorithm_validation/lunar_lander/ppo-2
   eval_model: null
   num_learners: 1
   num_samplers: 10

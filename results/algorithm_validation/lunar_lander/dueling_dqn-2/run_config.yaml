@@ -17,6 +17,7 @@ modules:
     decay_steps: 50000
     random_warmup: true
   network:
+    layer_type: MLP
     mlp_hidden_dims:
     - 256
     - 256
@@ -25,7 +26,7 @@ env:
   id: LunarLander-v3
   render_mode: null
 runner:
-  ckpt_dir: /root/project/HCB/GD2/GameRobot2/checkpoints/algorithm_validation/lunar_lander/dueling_dqn-2
+  ckpt_dir: results/algorithm_validation/lunar_lander/dueling_dqn-2
   eval_model: null
   num_learners: 1
   num_samplers: 1

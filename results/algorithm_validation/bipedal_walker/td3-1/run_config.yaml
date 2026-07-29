@@ -19,10 +19,12 @@ modules:
     random_warmup: true
   network:
     actor:
+      layer_type: MLP
       mlp_hidden_dims:
       - 256
       - 256
     critic:
+      layer_type: MLP
       mlp_hidden_dims:
       - 256
       - 256
@@ -31,7 +33,7 @@ env:
   id: BipedalWalker-v3
   render_mode: null
 runner:
-  ckpt_dir: /root/project/HCB/GD2/GameRobot2/checkpoints/algorithm_validation/bipedal_walker/td3-1
+  ckpt_dir: results/algorithm_validation/bipedal_walker/td3-1
   eval_model: null
   num_learners: 1
   num_samplers: 1

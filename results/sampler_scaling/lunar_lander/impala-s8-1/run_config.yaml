@@ -17,10 +17,12 @@ modules:
     track_version: false
   network:
     actor:
+      layer_type: MLP
       mlp_hidden_dims:
       - 256
       - 256
     critic:
+      layer_type: MLP
       mlp_hidden_dims:
       - 256
       - 256
@@ -29,7 +31,7 @@ env:
   id: LunarLander-v3
   render_mode: null
 runner:
-  ckpt_dir: checkpoints/experiments/sampler_scaling/lunar_lander/impala-s8-1
+  ckpt_dir: results/sampler_scaling/lunar_lander/impala-s8-1
   eval_model: null
   num_learners: 1
   num_samplers: 8

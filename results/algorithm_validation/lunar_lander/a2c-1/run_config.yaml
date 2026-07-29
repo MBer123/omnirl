@@ -1,6 +1,5 @@
 agent:
-  name: a2c
-  module: agents.policy_based.a2c
+  module: omnirl.algorithms.a2c
 modules:
   learner:
     gamma: 0.99
@@ -15,23 +14,21 @@ modules:
     max_chunks: 64
   network:
     actor:
+      layer_type: MLP
       mlp_hidden_dims:
       - 256
       - 256
     critic:
+      layer_type: MLP
       mlp_hidden_dims:
       - 256
       - 256
-  sampler:
-    unroll_length: 32
-pipeline:
-  name: gym
-  module: pipeline.runner
 env:
+  module: omnirl.envs.gymnasium
   id: LunarLander-v3
   render_mode: null
 runner:
-  ckpt_dir: checkpoints/a2c-1/Lunar Lander
+  ckpt_dir: results/algorithm_validation/lunar_lander/a2c-1
   eval_model: null
   num_learners: 1
   num_samplers: 10

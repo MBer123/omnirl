@@ -19,10 +19,12 @@ modules:
     track_version: true
   network:
     actor:
+      layer_type: MLP
       mlp_hidden_dims:
       - 64
       - 64
     critic:
+      layer_type: MLP
       mlp_hidden_dims:
       - 64
       - 64
@@ -30,7 +32,7 @@ env:
   module: omnirl.envs.rlcard
   id: blackjack
 runner:
-  ckpt_dir: checkpoints/environment_integration/rlcard/blackjack/ppo-1
+  ckpt_dir: results/environment_integration/rlcard/blackjack/ppo-1
   eval_model: null
   num_learners: 1
   num_samplers: 1

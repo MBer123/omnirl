@@ -18,7 +18,7 @@ modules:
   policy:
     epsilon_start: 1.0
     epsilon_end: 0.1
-    decay_steps: 100000
+    decay_steps: 50000
     random_warmup: true
     num_quantiles: 170
 
