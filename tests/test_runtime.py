@@ -248,6 +248,7 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(batch["log_probs"].shape, (1, 2))
 
     def test_representative_learners(self):
+        from omnirl.algorithms.ddpg import Learner as DDPGLearner
         from omnirl.algorithms.dqn import Learner as DQNLearner
         from omnirl.algorithms.impala import Learner as ImpalaLearner
         from omnirl.algorithms.ppo import Learner as PPOLearner
@@ -336,13 +337,19 @@ class RuntimeTest(unittest.TestCase):
             }
             td3 = TD3Learner.remote(**continuous_kwargs)
             tqc = TQCLearner.remote(**tqc_kwargs)
+            ddpg = DDPGLearner.remote(**continuous_kwargs)
+            discrete_sac = SACLearner.remote(**actor_critic_kwargs)
             learn_tasks = [
                 td3.learn.remote(continuous_batch),
                 tqc.learn.remote(continuous_batch),
+                ddpg.learn.remote(continuous_batch),
+                discrete_sac.learn.remote(replay_batch),
             ]
             results.extend(ray.get(learn_tasks))
             ray.kill(td3)
             ray.kill(tqc)
+            ray.kill(ddpg)
+            ray.kill(discrete_sac)
 
         for result in results:
             self.assertEqual(result["version"], 1)

@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from omnirl.networks.quantile_q import QuantileQNetwork
+from omnirl.networks.critics import QuantileQNetwork
 
 
 class Policy:

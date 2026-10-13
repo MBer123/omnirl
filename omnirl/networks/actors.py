@@ -30,27 +30,25 @@ class StochasticActorNetwork(nn.Module):
     ):
         super().__init__()
 
+        # Initialize network configuration
         self.is_continuous = is_continuous
         self.log_std_min = log_std_min
         self.log_std_max = log_std_max
         network_kwargs = dict(network_kwargs or {})
-        self.layer_type = layer_type.upper()
+        layer_type = layer_type.upper()
 
         # Select the configured feature network.
-        if self.layer_type == "MLP":
+        if layer_type == "MLP":
             self.layers = MLP(state_dim, **network_kwargs)
-            head_dim = self.layers.output_dim
-        elif self.layer_type == "CNN":
+        elif layer_type == "CNN":
             self.layers = CNN(state_dim, **network_kwargs)
-            self.fc = MLP(self.layers.output_dim, self.layers.conv_hidden_dims)
-            head_dim = self.fc.output_dim
-        elif self.layer_type == "RESNET":
+        elif layer_type == "RESNET":
             self.layers = ResNet(state_dim, **network_kwargs)
-            head_dim = self.layers.output_dim
         else:
-            raise ValueError(f"Unsupported layer type: {self.layer_type}")
+            raise ValueError(f"Unsupported layer type: {layer_type}")
 
         # Initialize the actor head based on the action type
+        head_dim = self.layers.output_dim
         if self.is_continuous:
             self.action_mean = nn.Linear(head_dim, action_dim)
             self.action_log_std = nn.Linear(head_dim, action_dim)
@@ -60,8 +58,6 @@ class StochasticActorNetwork(nn.Module):
     def forward(self, state):
         """Return mean and log_std for continuous action, logits for discrete action."""
         x = self.layers(state)
-        if self.layer_type == "CNN":
-            x = self.fc(x)
 
         if self.is_continuous:
             action_mean = self.action_mean(x)
@@ -96,30 +92,25 @@ class DeterministicActorNetwork(nn.Module):
     ):
         super().__init__()
 
+        # Initialize network configuration
         network_kwargs = dict(network_kwargs or {})
-        self.layer_type = layer_type.upper()
+        layer_type = layer_type.upper()
 
         # Select the configured feature network.
-        if self.layer_type == "MLP":
+        if layer_type == "MLP":
             self.layers = MLP(state_dim, **network_kwargs)
-            head_dim = self.layers.output_dim
-        elif self.layer_type == "CNN":
+        elif layer_type == "CNN":
             self.layers = CNN(state_dim, **network_kwargs)
-            self.fc = MLP(self.layers.output_dim, self.layers.conv_hidden_dims)
-            head_dim = self.fc.output_dim
-        elif self.layer_type == "RESNET":
+        elif layer_type == "RESNET":
             self.layers = ResNet(state_dim, **network_kwargs)
-            head_dim = self.layers.output_dim
         else:
-            raise ValueError(f"Unsupported layer type: {self.layer_type}")
+            raise ValueError(f"Unsupported layer type: {layer_type}")
 
         # Initialize the actor head
-        self.action = nn.Linear(head_dim, action_dim)
+        head_dim = self.layers.output_dim
+        self.output = nn.Linear(head_dim, action_dim)
 
     def forward(self, state):
         """Return deterministic action."""
         x = self.layers(state)
-        if self.layer_type == "CNN":
-            x = self.fc(x)
-
-        return torch.tanh(self.action(x))
+        return torch.tanh(self.output(x))

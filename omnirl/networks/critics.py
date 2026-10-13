@@ -22,30 +22,30 @@ class ValueCriticNetwork(nn.Module):
     ):
         super().__init__()
 
+        # Initialize network configuration
         network_kwargs = dict(network_kwargs or {})
-        self.layer_type = layer_type.upper()
+        layer_type = layer_type.upper()
 
         # Select the configured feature network.
-        if self.layer_type == "MLP":
+        if layer_type == "MLP":
             self.layers = MLP(state_dim, **network_kwargs)
-            self.V = nn.Linear(self.layers.output_dim, 1)
-        elif self.layer_type == "CNN":
+        elif layer_type == "CNN":
             self.layers = CNN(state_dim, **network_kwargs)
-            self.fc = MLP(self.layers.output_dim, self.layers.conv_hidden_dims)
-            self.V = nn.Linear(self.fc.output_dim, 1)
-        elif self.layer_type == "RESNET":
+        elif layer_type == "RESNET":
             self.layers = ResNet(state_dim, **network_kwargs)
-            self.V = nn.Linear(self.layers.output_dim, 1)
         else:
-            raise ValueError(f"Unsupported layer type: {self.layer_type}")
+            raise ValueError(f"Unsupported layer type: {layer_type}")
+
+        # Initialize the value head
+        self.output = nn.Linear(self.layers.output_dim, 1)
 
     def forward(self, state):
         """Return state value V(s)."""
         x = self.layers(state)
-        if self.layer_type == "CNN":
-            x = self.fc(x)
+        return self.output(x)
 
-        return self.V(x)
+
+# ==================== Continuous Q Networks ====================
 
 
 class QCriticNetwork(nn.Module):
@@ -55,7 +55,6 @@ class QCriticNetwork(nn.Module):
     Args:
         state_dim: Dimension of the environment state space.
         action_dim: Dimension of the environment action space.
-        is_continuous: Whether the action space is continuous.
         layer_type: Type of feature network to use.
         network_kwargs: Keyword arguments used to build the feature network.
     """
@@ -65,66 +64,46 @@ class QCriticNetwork(nn.Module):
         state_dim: int | tuple[int, int, int],
         action_dim: int,
         layer_type: str,
-        is_continuous: bool = False,
         network_kwargs: dict | None = None,
     ):
         super().__init__()
 
-        self.is_continuous = is_continuous
+        # Initialize network configuration
         network_kwargs = dict(network_kwargs or {})
-        self.layer_type = layer_type.upper()
+        layer_type = layer_type.upper()
 
         # Select the configured feature network.
-        if self.layer_type == "MLP":
-            if is_continuous:
-                input_dim = state_dim + action_dim
-                output_dim = 1
-            else:
-                input_dim = state_dim
-                output_dim = action_dim
-
-            self.layers = MLP(input_dim, **network_kwargs)
-            self.Q = nn.Linear(self.layers.output_dim, output_dim)
-        elif self.layer_type == "CNN":
+        if layer_type == "MLP":
+            self.layers = MLP(state_dim, **network_kwargs)
+        elif layer_type == "CNN":
             self.layers = CNN(state_dim, **network_kwargs)
-
-            if is_continuous:
-                input_dim = self.layers.output_dim + action_dim
-                output_dim = 1
-            else:
-                input_dim = self.layers.output_dim
-                output_dim = action_dim
-
-            self.fc = MLP(input_dim, self.layers.conv_hidden_dims)
-            self.Q = nn.Linear(self.fc.output_dim, output_dim)
-        elif self.layer_type == "RESNET":
+        elif layer_type == "RESNET":
             self.layers = ResNet(state_dim, **network_kwargs)
-            input_dim = self.layers.output_dim
-            output_dim = action_dim
-            if is_continuous:
-                input_dim += action_dim
-                output_dim = 1
-            self.Q = nn.Linear(input_dim, output_dim)
         else:
-            raise ValueError(f"Unsupported layer type: {self.layer_type}")
+            raise ValueError(f"Unsupported layer type: {layer_type}")
 
-    def forward(self, state, action=None):
-        """Return Q(s, a) for continuous actions, or Q(s, ·) for discrete actions."""
-        if self.layer_type == "MLP":
-            if self.is_continuous:
-                state = torch.cat([state, action], dim=-1)
-            x = self.layers(state)
-        else:
-            x = self.layers(state)
-            if self.is_continuous:
-                x = torch.cat([x, action], dim=-1)
-            if self.layer_type == "CNN":
-                x = self.fc(x)
+        # Initialize the Q-network head
+        self.head_dim = self.layers.output_dim
+        self.output = nn.Sequential(
+            nn.Linear(self.head_dim + action_dim, self.head_dim),
+            nn.ReLU(),
+            nn.Linear(self.head_dim, self.head_dim),
+            nn.ReLU(),
+            nn.Linear(self.head_dim, 1),
+        )
 
-        return self.Q(x)
+    def _encode(self, state, action):
+        state_features = self.layers(state)
+        joint_feature = torch.cat([state_features, action], dim=-1)
+        return joint_feature
+
+    def forward(self, state, action):
+        """Return Q(s, a) for continuous actions."""
+        x = self._encode(state, action)
+        return self.output(x)
 
 
-class QuantileCriticNetwork(nn.Module):
+class QuantileCriticNetwork(QCriticNetwork):
     """
     A simple quantile critic network.
 
@@ -144,40 +123,176 @@ class QuantileCriticNetwork(nn.Module):
         num_quantiles: int = 25,
         network_kwargs: dict | None = None,
     ):
+        super().__init__(state_dim, action_dim, layer_type, network_kwargs)
+
+        # Initialize the quantile head
+        self.output = nn.Sequential(
+            nn.Linear(self.head_dim + action_dim, self.head_dim),
+            nn.ReLU(),
+            nn.Linear(self.head_dim, self.head_dim),
+            nn.ReLU(),
+            nn.Linear(self.head_dim, num_quantiles),
+        )
+
+    def forward(self, state, action):
+        """Return quantile values for continuous actions."""
+        x = self._encode(state, action)
+        return self.output(x)
+
+
+# ==================== Discret Q Networks ====================
+
+
+class DeepQNetwork(nn.Module):
+    """
+    A simple Q-network.
+
+    Args:
+        state_dim: Dimension of the environment state space.
+        action_dim: Dimension of the environment action space.
+        layer_type: Type of feature network to use.
+        network_kwargs: Keyword arguments used to build the feature network.
+    """
+
+    def __init__(
+        self,
+        state_dim: int | tuple[int, int, int],
+        action_dim: int,
+        layer_type: str,
+        network_kwargs: dict | None = None,
+    ):
         super().__init__()
 
+        # Initialize network configuration
         network_kwargs = dict(network_kwargs or {})
-        self.layer_type = layer_type.upper()
+        layer_type = layer_type.upper()
 
         # Select the configured feature network.
-        if self.layer_type == "MLP":
-            self.layers = MLP(state_dim + action_dim, **network_kwargs)
-            self.quantiles = nn.Linear(self.layers.output_dim, num_quantiles)
-        elif self.layer_type == "CNN":
+        if layer_type == "MLP":
+            self.layers = MLP(state_dim, **network_kwargs)
+        elif layer_type == "CNN":
             self.layers = CNN(state_dim, **network_kwargs)
-            self.fc = MLP(
-                self.layers.output_dim + action_dim,
-                self.layers.conv_hidden_dims,
-            )
-            self.quantiles = nn.Linear(self.fc.output_dim, num_quantiles)
-        elif self.layer_type == "RESNET":
+        elif layer_type == "RESNET":
             self.layers = ResNet(state_dim, **network_kwargs)
-            self.quantiles = nn.Linear(
-                self.layers.output_dim + action_dim,
-                num_quantiles,
-            )
         else:
-            raise ValueError(f"Unsupported layer type: {self.layer_type}")
+            raise ValueError(f"Unsupported layer type: {layer_type}")
 
-    def forward(self, state, action=None):
-        """Return quantile values for continuous actions."""
-        if self.layer_type == "MLP":
-            state = torch.cat([state, action], dim=-1)
-            x = self.layers(state)
-        else:
-            x = self.layers(state)
-            x = torch.cat([x, action], dim=-1)
-            if self.layer_type == "CNN":
-                x = self.fc(x)
+        # Initialize the Q-network head
+        self.action_dim = action_dim
+        self.head_dim = self.layers.output_dim
+        self.output = nn.Linear(self.head_dim, self.action_dim)
 
-        return self.quantiles(x)
+    def forward(self, state):
+        """Return Q-values for all actions given the input state."""
+        x = self.layers(state)
+        return self.output(x)
+
+
+class DuelingQNetwork(DeepQNetwork):
+    """
+    A dueling Q-network.
+
+    Args:
+        state_dim: Dimension of the environment state space.
+        action_dim: Dimension of the environment action space.
+        layer_type: Type of feature network to use.
+        network_kwargs: Keyword arguments used to build the feature network.
+    """
+
+    def __init__(
+        self,
+        state_dim: int | tuple[int, int, int],
+        action_dim: int,
+        layer_type: str,
+        network_kwargs: dict | None = None,
+    ):
+        super().__init__(state_dim, action_dim, layer_type, network_kwargs)
+
+        # Initialize the value and advantage heads
+        self.output = nn.ModuleDict(
+            {
+                "V": nn.Sequential(
+                    nn.Linear(self.head_dim, self.head_dim),
+                    nn.ReLU(),
+                    nn.Linear(self.head_dim, 1),
+                ),
+                "A": nn.Sequential(
+                    nn.Linear(self.head_dim, self.head_dim),
+                    nn.ReLU(),
+                    nn.Linear(self.head_dim, self.action_dim),
+                ),
+            }
+        )
+
+    def forward(self, state):
+        """Return Q-values for all actions given the input state."""
+        x = self.layers(state)
+        V = self.output["V"](x)
+        A = self.output["A"](x)
+        return V + A - A.mean(dim=-1, keepdim=True)
+
+
+class QuantileQNetwork(DeepQNetwork):
+    """
+    A simple quantile Q-network.
+
+    Args:
+        state_dim: Dimension of the environment state space.
+        action_dim: Dimension of the environment action space.
+        layer_type: Type of feature network to use.
+        num_quantiles: Number of quantiles.
+        network_kwargs: Keyword arguments used to build the feature network.
+    """
+
+    def __init__(
+        self,
+        state_dim: int | tuple[int, int, int],
+        action_dim: int,
+        layer_type: str,
+        num_quantiles: int = 25,
+        network_kwargs: dict | None = None,
+    ):
+        super().__init__(state_dim, action_dim, layer_type, network_kwargs)
+
+        # Initialize the quantile head
+        self.num_quantiles = num_quantiles
+        self.output = nn.Linear(self.head_dim, action_dim * num_quantiles)
+
+    def forward(self, state):
+        """Return quantile values for all actions given the input state."""
+        x = self.layers(state)
+        x = self.output(x)
+        return x.view(-1, self.action_dim, self.num_quantiles)
+
+
+class CategoricalQNetwork(DeepQNetwork):
+    """
+    A simple categorical Q-network.
+
+    Args:
+        state_dim: Dimension of the environment state space.
+        action_dim: Dimension of the environment action space.
+        layer_type: Type of feature network to use.
+        num_atoms: Number of atoms for C51.
+        network_kwargs: Keyword arguments used to build the feature network.
+    """
+
+    def __init__(
+        self,
+        state_dim: int | tuple[int, int, int],
+        action_dim: int,
+        layer_type: str,
+        num_atoms: int = 51,
+        network_kwargs: dict | None = None,
+    ):
+        super().__init__(state_dim, action_dim, layer_type, network_kwargs)
+
+        # Initialize the distributional Q-network head
+        self.num_atoms = num_atoms
+        self.output = nn.Linear(self.head_dim, action_dim * num_atoms)
+
+    def forward(self, state):
+        """Return Q-logits for all actions given the input state."""
+        x = self.layers(state)
+        x = self.output(x)
+        return x.view(-1, self.action_dim, self.num_atoms)

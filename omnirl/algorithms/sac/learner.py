@@ -7,11 +7,11 @@ import torch
 import torch.distributed as torch_dist
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.distributions import Categorical, Normal
+from torch.distributions import Normal
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from omnirl.networks.actors import StochasticActorNetwork
-from omnirl.networks.critics import QCriticNetwork
+from omnirl.networks.critics import DeepQNetwork, QCriticNetwork
 from omnirl.utils.seed import set_global_seed
 
 
@@ -123,18 +123,18 @@ class Learner:
             log_std_max=log_std_max,
             network_kwargs=actor_kwargs,
         )
-        critic_1 = QCriticNetwork(
+
+        critic_cls = QCriticNetwork if is_continuous else DeepQNetwork
+        critic_1 = critic_cls(
             state_dim=state_dim,
             action_dim=action_dim,
             layer_type=critic_layer_type,
-            is_continuous=is_continuous,
             network_kwargs=critic_kwargs,
         )
-        critic_2 = QCriticNetwork(
+        critic_2 = critic_cls(
             state_dim=state_dim,
             action_dim=action_dim,
             layer_type=critic_layer_type,
-            is_continuous=is_continuous,
             network_kwargs=critic_kwargs,
         )
 
@@ -221,33 +221,39 @@ class Learner:
                 squash_correction = torch.log(1 - next_actions.pow(2) + 1e-6)
                 next_log_probs = next_log_probs - squash_correction
                 next_log_probs = next_log_probs.sum(dim=-1)
+                next_q1 = self.target_critic_1(next_states_tensor, next_actions)
+                next_q2 = self.target_critic_2(next_states_tensor, next_actions)
+                next_q1 = next_q1.squeeze(-1)
+                next_q2 = next_q2.squeeze(-1)
             else:
                 action_logits = self.actor(next_states_tensor)
-                dist = Categorical(logits=action_logits)
-                next_actions = dist.sample()
                 next_log_probs = F.log_softmax(action_logits, dim=-1)
+                next_q1 = self.target_critic_1(next_states_tensor)
+                next_q2 = self.target_critic_2(next_states_tensor)
 
             # Compute soft state value
-            next_q1 = self.target_critic_1(next_states_tensor, next_actions).squeeze(-1)
-            next_q2 = self.target_critic_2(next_states_tensor, next_actions).squeeze(-1)
             next_q = torch.min(next_q1, next_q2)
             soft_next_v = next_q - torch.exp(self.log_alpha) * next_log_probs
 
             # Compute expectation for discrete action space
             if not self.is_continuous:
-                log_probs = torch.exp(next_log_probs)
-                soft_next_v = torch.sum(log_probs * soft_next_v, dim=1).view(-1)
+                next_probs = torch.exp(next_log_probs)
+                soft_next_v = torch.sum(next_probs * soft_next_v, dim=-1)
 
             # Compute target values
             soft_next_v[terminals_tensor] = 0.0
             target = rewards_tensor + self.gamma * soft_next_v
 
         # Q(s, a) predicted by online network
-        q1 = self.train_critic_1(states_tensor, actions_tensor).squeeze(-1)
-        q2 = self.train_critic_2(states_tensor, actions_tensor).squeeze(-1)
-        if not self.is_continuous:
-            q1 = q1.gather(1, actions_tensor[:, None]).squeeze(1)
-            q2 = q2.gather(1, actions_tensor[:, None]).squeeze(1)
+        if self.is_continuous:
+            q1 = self.train_critic_1(states_tensor, actions_tensor)
+            q2 = self.train_critic_2(states_tensor, actions_tensor)
+        else:
+            action_indices = actions_tensor.long().unsqueeze(-1)
+            q1 = self.train_critic_1(states_tensor).gather(1, action_indices)
+            q2 = self.train_critic_2(states_tensor).gather(1, action_indices)
+        q1 = q1.squeeze(-1)
+        q2 = q2.squeeze(-1)
 
         # Update critic network
         critic_1_loss = F.mse_loss(q1, target)
@@ -274,8 +280,6 @@ class Learner:
             log_probs = log_probs.sum(dim=-1)
         else:
             action_logits = self.train_actor(states_tensor)
-            dist = Categorical(logits=action_logits)
-            new_actions = dist.sample()
             log_probs = F.log_softmax(action_logits, dim=-1)
 
         # Freeze critic during actor update
@@ -285,14 +289,18 @@ class Learner:
             p.requires_grad_(False)
 
         # Compute action value
-        q1 = self.critic_1(states_tensor, new_actions).squeeze(-1)
-        q2 = self.critic_2(states_tensor, new_actions).squeeze(-1)
+        if self.is_continuous:
+            q1 = self.critic_1(states_tensor, new_actions).squeeze(-1)
+            q2 = self.critic_2(states_tensor, new_actions).squeeze(-1)
+        else:
+            q1 = self.critic_1(states_tensor)
+            q2 = self.critic_2(states_tensor)
         q = torch.min(q1, q2)
 
         # Update actor network
         actor_loss = torch.exp(self.log_alpha).detach() * log_probs - q
         if not self.is_continuous:
-            actor_loss = torch.sum(torch.exp(log_probs) * actor_loss, dim=1).view(-1)
+            actor_loss = torch.sum(torch.exp(log_probs) * actor_loss, dim=-1)
         actor_loss = actor_loss.mean()
 
         self.actor_optimizer.zero_grad()
@@ -313,7 +321,7 @@ class Learner:
         temp_loss = -self.log_alpha * (log_probs.detach() + self.target_entropy)
         if not self.is_continuous:
             probs = torch.exp(log_probs).detach()
-            temp_loss = torch.sum(probs * temp_loss, dim=1).view(-1)
+            temp_loss = torch.sum(probs * temp_loss, dim=-1)
         temp_loss = temp_loss.mean()
 
         self.alpha_optimizer.zero_grad()

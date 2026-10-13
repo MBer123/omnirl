@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from omnirl.networks.quantile_q import QuantileQNetwork
+from omnirl.networks.critics import QuantileQNetwork
 from omnirl.utils.seed import set_global_seed
 
 

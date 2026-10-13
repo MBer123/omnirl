@@ -9,7 +9,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from omnirl.networks.deep_q import DeepQNetwork
+from omnirl.networks.critics import DeepQNetwork
 from omnirl.utils.seed import set_global_seed
 
 

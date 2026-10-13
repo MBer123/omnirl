@@ -5,7 +5,14 @@ from .mlp import MLP
 
 
 class ResidualBlock(nn.Module):
-    """A two-convolution residual block with optional spatial downsampling."""
+    """
+    A two-convolution residual block with optional spatial downsampling.
+
+    Args:
+        in_channels: Number of input channels.
+        out_channels: Number of output channels.
+        stride: Stride for the first convolution and shortcut projection.
+    """
 
     def __init__(self, in_channels, out_channels, stride=1):
         super().__init__()
@@ -71,10 +78,10 @@ class ResNet(nn.Module):
         if not stage_channels or any(blocks < 1 for blocks in blocks_per_stage):
             raise ValueError("ResNet requires at least one block in every stage")
 
-        _, _, input_channels = state_dim
+        _, _, in_channels = state_dim
         self.stem = nn.Sequential(
             nn.Conv2d(
-                input_channels,
+                in_channels,
                 stem_channels,
                 kernel_size=7,
                 stride=2,
@@ -97,8 +104,7 @@ class ResNet(nn.Module):
                 )
             ]
             blocks.extend(
-                ResidualBlock(out_channels, out_channels)
-                for _ in range(num_blocks - 1)
+                ResidualBlock(out_channels, out_channels) for _ in range(num_blocks - 1)
             )
             stages.append(nn.Sequential(*blocks))
             in_channels = out_channels

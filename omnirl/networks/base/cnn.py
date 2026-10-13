@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from .mlp import MLP
+
 
 class CNN(nn.Sequential):
     """
@@ -15,14 +17,11 @@ class CNN(nn.Sequential):
     def __init__(
         self,
         state_dim: tuple[int, int, int],
-        conv_layers: tuple[tuple[int, int, int, int], ...] = (
-            (32, 8, 4, 0),
-            (64, 4, 2, 0),
-        ),
+        conv_layers: tuple[tuple[int, ...], ...] = ((32, 8, 4, 0),),
         conv_hidden_dims: tuple[int, ...] = (256,),
     ):
+        super().__init__()
         H, W, C = state_dim
-        self.conv_hidden_dims = conv_hidden_dims
 
         layers = []
         in_channels = C
@@ -39,15 +38,17 @@ class CNN(nn.Sequential):
             layers.append(nn.ReLU())
             in_channels = out_channels
 
-        super().__init__(*layers)
-
+        self.layers = nn.Sequential(*layers)
         with torch.no_grad():
             dummy = torch.zeros(1, C, H, W)
-            x = super().forward(dummy)
-            self.output_dim = x.view(1, -1).size(1)
+            x = self.layers(dummy)
+            flatten = x.view(1, -1).size(1)
+
+        self.projection = MLP(flatten, conv_hidden_dims)
+        self.output_dim = self.projection.output_dim
 
     def forward(self, state):
         """Return flattened CNN features."""
         state = state.permute(0, 3, 1, 2).contiguous()
-        x = super().forward(state)
-        return x.view(x.size(0), -1)
+        x = self.layers(state).flatten(1)
+        return self.projection(x)

@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from omnirl.networks.deep_q import DeepQNetwork
+from omnirl.networks.critics import DeepQNetwork
 
 
 class Policy:

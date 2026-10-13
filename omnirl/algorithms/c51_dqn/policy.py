@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from omnirl.networks.categorical_q import CategoricalQNetwork
+from omnirl.networks.critics import CategoricalQNetwork
 
 
 class Policy:

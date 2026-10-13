@@ -116,14 +116,12 @@ class Learner:
             state_dim=state_dim,
             action_dim=action_dim,
             layer_type=critic_layer_type,
-            is_continuous=True,
             network_kwargs=critic_kwargs,
         )
         critic_2 = QCriticNetwork(
             state_dim=state_dim,
             action_dim=action_dim,
             layer_type=critic_layer_type,
-            is_continuous=True,
             network_kwargs=critic_kwargs,
         )
 

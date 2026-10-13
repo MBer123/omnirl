@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from omnirl.networks.dueling_q import DuelingDeepQNetwork
+from omnirl.networks.critics import DuelingQNetwork
 
 
 class Policy:
@@ -45,7 +45,7 @@ class Policy:
 
         network_kwargs = dict(network_kwargs or {})
         layer_type = network_kwargs.pop("layer_type")
-        q_net = DuelingDeepQNetwork(
+        q_net = DuelingQNetwork(
             state_dim=state_dim,
             action_dim=action_dim,
             layer_type=layer_type,
