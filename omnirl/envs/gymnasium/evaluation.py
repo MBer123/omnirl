@@ -54,7 +54,7 @@ class EvaluationLoop:
         self.env.reset(seed=seed)
         self.metric_tracker = MetricTracker()
 
-    def run(self, choose_action, num_episodes):
+    def run(self, policy, num_episodes):
         """Evaluate an action callback and return environment metrics."""
         self.metric_tracker.reset()
 
@@ -66,7 +66,7 @@ class EvaluationLoop:
                 if self.env.render_mode == "human":
                     self.env.render()
 
-                action = choose_action(observation)
+                action = policy.choose_action(observation)
                 observation, reward, terminated, truncated, info = self.env.step(action)
                 done = terminated or truncated
 

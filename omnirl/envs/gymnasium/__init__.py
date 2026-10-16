@@ -2,13 +2,12 @@ from .adapter import EnvAdapter
 from .builder import build_env
 from .collection import CollectionLoop
 from .evaluation import EvaluationLoop, MetricTracker, aggregate_evaluations
-from .spec import EnvSpec, get_env_spec
+from .spec import get_env_spec
 
 
 __all__ = [
     "CollectionLoop",
     "EnvAdapter",
-    "EnvSpec",
     "EvaluationLoop",
     "MetricTracker",
     "aggregate_evaluations",

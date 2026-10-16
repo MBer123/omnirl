@@ -63,10 +63,27 @@ class Runner:
     ):
         # Initialize ray
         try:
-            runtime_env = {"working_dir": ".", "excludes": ["checkpoints/"]}
+            runtime_env = {
+                "working_dir": ".",
+                "excludes": ["**/*.ckpt", "**/*.csv", "**/*.pth"],
+            }
             ray.init(address="auto", runtime_env=runtime_env)
         except ConnectionError:
             ray.init()
+
+        # Initialize logging and checkpoint utilities
+        self.log = setup_logger()
+        self.ckpt_dir = os.path.abspath(ckpt_dir)
+        self.ckpt_path = os.path.join(self.ckpt_dir, "checkpoint.ckpt")
+        self.fw = FileWriter(ckpt_dir=self.ckpt_dir, log_name=log_name)
+
+        # Read the environment description through the backend interface
+        env_config = dict(env_config)
+        env_meta = environment.get_env_spec(env_config)
+        env_spec = env_meta["env_spec"]
+        state_spec = env_meta["state_spec"]
+        action_spec = env_meta["action_spec"]
+        eval_metrics = env_meta["eval_metrics"]
 
         # Load agent module arguments from config
         learner_kwargs = dict(agent_config.get("learner") or {})
@@ -75,32 +92,20 @@ class Runner:
         network_kwargs = dict(agent_config.get("network") or {})
         unroll_length = memory_kwargs.get("unroll_length", 1)
 
-        # Preserve the complete environment configuration as opaque backend data
-        env_config = dict(env_config)
-
-        # Read the environment description through the backend interface
-        env_spec = environment.get_env_spec(env_config)
-        state_dim = env_spec.state_dim
-        state_dtype = env_spec.state_dtype
-        action_dim = env_spec.action_dim
-        is_continuous = env_spec.is_continuous
-        action_low = env_spec.action_low
-        action_high = env_spec.action_high
-        default_eval_metrics = dict(env_spec.default_eval_metrics)
+        # Initialize memory
+        self.memory = agent.Memory.remote(**state_spec, **memory_kwargs)
 
         # Initialize learner
         num_gpus = 0 if learner_device == "cpu" else 1
         self.learners = [
             agent.Learner.options(num_gpus=num_gpus).remote(
-                state_dim=state_dim,
-                action_dim=action_dim,
+                network_kwargs=network_kwargs,
                 ckpt_dir=ckpt_dir,
                 device=learner_device,
-                is_continuous=is_continuous,
                 seed=learner_seed,
-                network_kwargs=network_kwargs,
                 rank=i,
                 world_size=num_learners,
+                **env_spec,
                 **learner_kwargs,
             )
             for i in range(num_learners)
@@ -108,15 +113,6 @@ class Runner:
         self.learner = self.learners[0]
         if eval_model is not None:
             ray.get(self.learner.load_model.remote(eval_model))
-
-        # Initialize memory
-        self.memory = agent.Memory.remote(
-            state_dim=state_dim,
-            action_dim=action_dim,
-            state_dtype=state_dtype,
-            is_continuous=is_continuous,
-            **memory_kwargs,
-        )
 
         # Initialize weight store
         init_weight = ray.get(self.learner.get_weights.remote())
@@ -133,11 +129,7 @@ class Runner:
                     env_config=env_config,
                     role="collection",
                 ),
-                state_dim=state_dim,
-                action_dim=action_dim,
-                is_continuous=is_continuous,
-                action_low=action_low,
-                action_high=action_high,
+                action_spec=action_spec,
                 seed=None if sampler_seed is None else sampler_seed + 1000 + i,
                 network_kwargs=network_kwargs,
                 policy_kwargs=policy_kwargs,
@@ -156,12 +148,8 @@ class Runner:
                     env_config=env_config,
                     role="evaluation",
                 ),
-                state_dim=state_dim,
-                action_dim=action_dim,
+                action_spec=action_spec,
                 num_episodes=num_episodes,
-                is_continuous=is_continuous,
-                action_low=action_low,
-                action_high=action_high,
                 seed=None if evaluator_seed is None else evaluator_seed + 2000 + i,
                 network_kwargs=network_kwargs,
                 policy_kwargs=policy_kwargs,
@@ -175,12 +163,6 @@ class Runner:
         self.log_interval = log_interval
         self.load_checkpoint = load_checkpoint
 
-        # Initialize logging and checkpoint utilities
-        self.log = setup_logger()
-        self.ckpt_dir = ckpt_dir
-        self.ckpt_path = os.path.join(self.ckpt_dir, "checkpoint.ckpt")
-        self.fw = FileWriter(ckpt_dir=self.ckpt_dir, log_name=log_name)
-
         # Initialize training state
         self.version = init_version
         self.eval_version = -1
@@ -191,7 +173,7 @@ class Runner:
         self.latest_eval_info = {
             "version": 0,
             "num_episodes": 0,
-            **default_eval_metrics,
+            **eval_metrics,
         }
 
         # Initialize timing state
