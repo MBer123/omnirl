@@ -1,0 +1,24 @@
+agent:
+  module: omnirl.algorithms.dueling_dqn
+
+modules:
+  learner:
+    gamma: 0.99
+    tau: 0.005
+    lr: 0.0003
+    max_grad_norm: 10
+
+  memory:
+    batch_size: 64
+    warmup_size: 1000
+    max_size: 100000
+
+  policy:
+    epsilon_start: 1
+    epsilon_end: 0.01
+    decay_steps: 100000
+    random_warmup: true
+
+  network:
+    layer_type: MLP
+    mlp_hidden_dims: [64, 64]

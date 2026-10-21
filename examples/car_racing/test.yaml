@@ -1,0 +1,18 @@
+env:
+  module: omnirl.envs.gymnasium
+  id: CarRacing-v3
+  render_mode: null
+
+runner:
+  ckpt_dir: checkpoints/car_racing
+  eval_model: agent_100.pth
+  num_evaluators: 1
+  num_episodes: 10
+
+device:
+  learner: cpu
+
+seed:
+  learner: 0
+  sampler: 0
+  evaluator: 0

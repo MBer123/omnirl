@@ -1,0 +1,23 @@
+env:
+  module: omnirl.envs.gymnasium
+  id: CarRacing-v3
+  render_mode: null
+
+runner:
+  ckpt_dir: checkpoints/car_racing
+  num_learners: 1
+  num_samplers: 1
+  num_evaluators: 1
+  num_episodes: 5
+  max_updates: 100
+  save_interval: 60
+  log_interval: 10
+  load_checkpoint: true
+
+device:
+  learner: cpu
+
+seed:
+  learner: 0
+  sampler: 0
+  evaluator: 0

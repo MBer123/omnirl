@@ -24,7 +24,7 @@ ALGORITHMS = [
     "qr_dqn",
 ]
 
-CONFIG_ROOT = Path("experiments")
+CONFIG_ROOT = Path("examples")
 
 
 class StructureTest(unittest.TestCase):
@@ -37,6 +37,49 @@ class StructureTest(unittest.TestCase):
                 self.assertTrue(callable(module.Policy.set_weights))
                 self.assertTrue(callable(module.Policy.choose_action))
                 self.assertTrue(callable(module.Policy.sample_action))
+
+    def test_algorithm_example_coverage(self):
+        template_paths = list((CONFIG_ROOT / "algorithms").glob("*.yaml"))
+        self.assertEqual({path.stem for path in template_paths}, set(ALGORITHMS))
+        for path in template_paths:
+            with self.subTest(algorithm=path.stem):
+                config = yaml.safe_load(path.read_text(encoding="utf-8"))
+                self.assertEqual(
+                    config["agent"]["module"], f"omnirl.algorithms.{path.stem}"
+                )
+
+    def test_ppo_environment_examples(self):
+        cases = {
+            "cartpole": ("CartPole-v1", "MLP"),
+            "bipedal_walker": ("BipedalWalker-v3", "MLP"),
+            "car_racing": ("CarRacing-v3", "CNN"),
+        }
+        for name, (env_id, layer_type) in cases.items():
+            with self.subTest(example=name):
+                example_dir = CONFIG_ROOT / name
+                agent = yaml.safe_load(
+                    (example_dir / "ppo.yaml").read_text(encoding="utf-8")
+                )
+                train = yaml.safe_load(
+                    (example_dir / "train.yaml").read_text(encoding="utf-8")
+                )
+                evaluation = yaml.safe_load(
+                    (example_dir / "test.yaml").read_text(encoding="utf-8")
+                )
+                self.assertEqual(agent["agent"]["module"], "omnirl.algorithms.ppo")
+                for component in ("actor", "critic"):
+                    self.assertEqual(
+                        agent["modules"]["network"][component]["layer_type"], layer_type
+                    )
+                self.assertEqual(train["env"]["id"], env_id)
+                self.assertEqual(evaluation["env"], train["env"])
+                self.assertEqual(
+                    evaluation["runner"]["ckpt_dir"], train["runner"]["ckpt_dir"]
+                )
+                self.assertEqual(
+                    evaluation["runner"]["eval_model"],
+                    f"agent_{train['runner']['max_updates']}.pth",
+                )
 
     def test_config_module_paths(self):
         paths = list(CONFIG_ROOT.rglob("*.yaml"))
@@ -104,11 +147,11 @@ class StructureTest(unittest.TestCase):
                     self.assertLessEqual(seed_fields, allowed_seed_fields)
 
     def test_runner_config_loading(self):
-        experiment_dir = Path("experiments/algorithm_validation/lunar_lander/dqn-0")
+        example_dir = CONFIG_ROOT / "cartpole"
 
-        with (experiment_dir / "train.yaml").open("r", encoding="utf-8") as file:
+        with (example_dir / "train.yaml").open("r", encoding="utf-8") as file:
             runner_config = yaml.safe_load(file)
-        with (experiment_dir / "dqn.yaml").open("r", encoding="utf-8") as file:
+        with (example_dir / "ppo.yaml").open("r", encoding="utf-8") as file:
             agent_config = yaml.safe_load(file)
 
         agent = object()
@@ -120,7 +163,7 @@ class StructureTest(unittest.TestCase):
 
         self.assertIs(captured_kwargs["agent"], agent)
         self.assertIs(captured_kwargs["environment"], environment)
-        expected_env_config = {"id": "LunarLander-v3", "render_mode": None}
+        expected_env_config = {"id": "CartPole-v1", "render_mode": None}
         self.assertEqual(captured_kwargs["env_config"], expected_env_config)
         self.assertEqual(captured_kwargs["agent_config"], agent_config["modules"])
         self.assertEqual(captured_kwargs["learner_seed"], 0)
