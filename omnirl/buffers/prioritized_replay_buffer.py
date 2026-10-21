@@ -18,7 +18,6 @@ class PrioritizedReplayBuffer:
         batch_size: Mini-batch size sampled from the buffer.
         warmup_size: Minimum number of transitions required before training.
         max_size: Maximum number of replay transitions stored in the buffer.
-        replay_ratio: Target replayed transitions per collected transition.
     """
 
     def __init__(
@@ -33,12 +32,10 @@ class PrioritizedReplayBuffer:
         batch_size: int = 64,
         warmup_size: int = 0,
         max_size: int = 1000000,
-        replay_ratio: float = 1,
     ):
         self.batch_size = batch_size
         self.warmup_size = warmup_size
         self.max_size = max_size
-        self.target_ratio = replay_ratio * batch_size
 
         self.alpha = alpha
         self.beta_start = beta
@@ -64,14 +61,6 @@ class PrioritizedReplayBuffer:
 
     def put(self, state, action, reward, next_state, terminal):
         """Store one transition into the replay buffer."""
-        batch_ok = self.available_size >= self.batch_size
-        warmup_ok = self.collected_size >= self.warmup_size
-        if batch_ok and warmup_ok:
-            collect = self.collected_size - self.warmup_size
-            trained = self.replayed_size
-            if collect > trained / self.target_ratio:
-                return
-
         index = self.collected_size % self.max_size
 
         self.state_memory[index] = state
@@ -154,10 +143,7 @@ class PrioritizedReplayBuffer:
         """Return True if the buffer has enough samples to start training."""
         batch_ok = self.available_size >= self.batch_size
         warmup_ok = self.collected_size >= self.warmup_size
-        collect = self.collected_size - self.warmup_size
-        trained = self.replayed_size
-        replay_ok = collect > trained / self.target_ratio
-        return batch_ok and warmup_ok and replay_ok
+        return batch_ok and warmup_ok
 
     def _clear(self):
         """Clear all stored transitions in the replay buffer."""
