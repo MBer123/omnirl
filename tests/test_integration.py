@@ -16,7 +16,6 @@ class IntegrationTest(unittest.TestCase):
                 "batch_size": 4,
                 "warmup_size": 4,
                 "max_size": 32,
-                "replay_ratio": 1,
             },
             "policy": {
                 "epsilon_start": 1.0,
