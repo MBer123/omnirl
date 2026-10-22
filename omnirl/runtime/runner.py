@@ -100,7 +100,7 @@ class Runner:
         self.learners = [
             agent.Learner.options(num_gpus=num_gpus).remote(
                 network_kwargs=network_kwargs,
-                ckpt_dir=ckpt_dir,
+                ckpt_dir=self.ckpt_dir,
                 device=learner_device,
                 seed=learner_seed,
                 rank=i,
