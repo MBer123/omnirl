@@ -70,13 +70,13 @@ pip install omnirl-framework
 The PyPI distribution is named `omnirl-framework`; the Python import package remains `omnirl`. Install the Gymnasium dependency:
 
 ```bash
-pip install "gymnasium>=1.2,<1.4"
+pip install "gymnasium>=1.0,<2"
 ```
 
 The BipedalWalker and CarRacing examples require the Box2D extra:
 
 ```bash
-pip install "gymnasium[box2d]>=1.2,<1.4"
+pip install "gymnasium[box2d]>=1.0,<2"
 ```
 
 For GPU training, install the PyTorch build that matches the operating system and CUDA runtime, then verify CUDA availability:
