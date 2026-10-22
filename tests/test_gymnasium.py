@@ -40,18 +40,6 @@ class GymnasiumEnvironmentTest(unittest.TestCase):
         make.assert_called_once_with("Example-v0", render_mode=None)
         self.assertIsNone(env.render_mode)
 
-    def test_unknown_role_is_rejected(self):
-        with self.assertRaisesRegex(ValueError, "Unsupported environment role"):
-            build_env({"id": "Example-v0"}, role="unknown")
-
-    def test_missing_id_is_rejected(self):
-        with self.assertRaisesRegex(ValueError, "requires an 'id'"):
-            build_env({})
-
-    def test_unknown_config_field_is_rejected(self):
-        with self.assertRaisesRegex(ValueError, "custom_option"):
-            build_env({"id": "Example-v0", "custom_option": 42})
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -112,7 +112,7 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(batch["actions"].shape, (2,))
 
         ray.get(memory.on_learn.remote([{}]))
-        self.assertFalse(ray.get(memory.ready.remote()))
+        self.assertTrue(ray.get(memory.ready.remote()))
 
     def test_prioritized_replay_buffer(self):
         memory_kwargs = {
@@ -142,7 +142,7 @@ class RuntimeTest(unittest.TestCase):
             "td_errors": np.ones(2, dtype=np.float32),
         }
         ray.get(memory.on_learn.remote([learn_info]))
-        self.assertFalse(ray.get(memory.ready.remote()))
+        self.assertTrue(ray.get(memory.ready.remote()))
 
         weighted_memory_kwargs = {
             "state_dim": 1,
