@@ -231,7 +231,38 @@ class Learner:
                 advantages[:, t] = gae
 
             returns = advantages + state_values
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+            # Global statistics: sum(A), sum(A^2), sum(R), sum(R^2), sample count
+            stats = torch.stack(
+                (
+                    advantages.sum(dtype=torch.float64),
+                    advantages.double().square().sum(),
+                    returns.sum(dtype=torch.float64),
+                    returns.double().square().sum(),
+                    advantages.new_tensor(advantages.numel(), dtype=torch.float64),
+                )
+            )
+            if torch_dist.is_initialized():
+                torch_dist.all_reduce(stats)
+
+            advantage_sum = stats[0]
+            advantage_square_sum = stats[1]
+            return_sum = stats[2]
+            return_square_sum = stats[3]
+            count = stats[4]
+
+            advantage_var = advantage_square_sum - advantage_sum.square() / count
+            advantage_var = (advantage_var / (count - 1).clamp_min(1)).clamp_min(0)
+
+            return_var = return_square_sum - return_sum.square() / count
+            return_var = (return_var / (count - 1).clamp_min(1)).clamp_min(0)
+
+            advantage_mean = advantage_sum / count
+            advantage_mean = advantage_mean.to(advantages)
+            advantage_std = advantage_var.sqrt().to(advantages)
+            advantages = (advantages - advantage_mean) / (advantage_std + 1e-8)
+
+            explained_var = (1 - advantage_var / (return_var + 1e-8)).item()
 
         flat_states = states_tensor.view(B * T, *states_tensor.shape[2:])
         if self.is_continuous:
@@ -250,7 +281,6 @@ class Learner:
         total_entropy = 0.0
         total_approx_kl = 0.0
         total_clip_frac = 0.0
-        total_explained_var = 0.0
         num_updates = 0
 
         # PPO mini-batch learning loop
@@ -291,10 +321,6 @@ class Learner:
                 approx_kl = (mb_old_log_probs - new_log_probs).mean()
                 clip_frac = (torch.abs(ratios - 1.0) > self.epsilon_clip).float().mean()
 
-                value_error_var = torch.var(mb_returns - new_state_values.detach())
-                return_var = torch.var(mb_returns)
-                explained_var = 1 - value_error_var / (return_var + 1e-8)
-
                 self.actor_optimizer.zero_grad()
                 self.critic_optimizer.zero_grad()
                 loss.backward()
@@ -308,7 +334,6 @@ class Learner:
                 total_entropy += entropy_loss.item()
                 total_approx_kl += approx_kl.item()
                 total_clip_frac += clip_frac.item()
-                total_explained_var += explained_var.item()
                 num_updates += 1
 
         # Update model version
@@ -321,7 +346,7 @@ class Learner:
                 "entropy": total_entropy / num_updates,
                 "approx_kl": total_approx_kl / num_updates,
                 "clip_frac": total_clip_frac / num_updates,
-                "explained_var": total_explained_var / num_updates,
+                "explained_var": explained_var,
             },
             "memory": {"version": self.version},
             "version": self.get_version(),

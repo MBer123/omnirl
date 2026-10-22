@@ -221,7 +221,38 @@ class Learner:
                 advantages[:, t] = gae
 
             returns = advantages + state_values
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+            # Global statistics: sum(A), sum(A^2), sum(R), sum(R^2), sample count
+            stats = torch.stack(
+                (
+                    advantages.sum(dtype=torch.float64),
+                    advantages.double().square().sum(),
+                    returns.sum(dtype=torch.float64),
+                    returns.double().square().sum(),
+                    advantages.new_tensor(advantages.numel(), dtype=torch.float64),
+                )
+            )
+            if torch_dist.is_initialized():
+                torch_dist.all_reduce(stats)
+
+            advantage_sum = stats[0]
+            advantage_square = stats[1]
+            return_sum = stats[2]
+            return_square = stats[3]
+            count = stats[4]
+
+            advantage_var = advantage_square - advantage_sum.square() / count
+            advantage_var = (advantage_var / (count - 1).clamp_min(1)).clamp_min(0)
+
+            return_var = return_square - return_sum.square() / count
+            return_var = (return_var / (count - 1).clamp_min(1)).clamp_min(0)
+
+            advantage_mean = advantage_sum / count
+            advantage_mean = advantage_mean.to(advantages)
+            advantage_std = advantage_var.sqrt().to(advantages)
+            advantages = (advantages - advantage_mean) / (advantage_std + 1e-8)
+
+            explained_var = (1 - advantage_var / (return_var + 1e-8)).item()
 
         flat_states = states_tensor.view(B * T, *states_tensor.shape[2:])
         if self.is_continuous:
@@ -243,10 +274,6 @@ class Learner:
 
         loss = actor_loss + self.vf_coef * critic_loss - self.ent_coef * entropy_loss
 
-        value_error_var = torch.var(flat_returns - state_values.detach())
-        return_var = torch.var(flat_returns)
-        explained_var = 1 - value_error_var / (return_var + 1e-8)
-
         self.actor_optimizer.zero_grad()
         self.critic_optimizer.zero_grad()
         loss.backward()
@@ -263,7 +290,7 @@ class Learner:
                 "actor_loss": actor_loss.item(),
                 "critic_loss": critic_loss.item(),
                 "entropy": entropy_loss.item(),
-                "explained_var": explained_var.item(),
+                "explained_var": explained_var,
             },
             "memory": {"version": self.version},
             "version": self.get_version(),
