@@ -1,5 +1,6 @@
 import os
 import time
+from collections import deque
 from datetime import timedelta
 from functools import partial
 import threading
@@ -29,6 +30,7 @@ class Runner:
         num_evaluators: Number of evaluator actors.
         num_episodes: Number of evaluation episodes per evaluator.
         max_updates: Maximum number of learner updates.
+        prefetch_depth: Maximum number of learner updates kept in flight.
         save_interval: Time in seconds between checkpoint saves.
         log_interval: Time in seconds between logging events.
         log_name: Name of the training log file.
@@ -52,6 +54,7 @@ class Runner:
         num_evaluators: int = 1,
         num_episodes: int = 10,
         max_updates: int = 10000000,
+        prefetch_depth: int = 1,
         save_interval: int = 3600,
         log_interval: int = 60,
         log_name: str = "log.csv",
@@ -94,6 +97,7 @@ class Runner:
 
         # Initialize memory
         self.memory = agent.Memory.remote(**state_spec, **memory_kwargs)
+        supports_prefetch = ray.get(self.memory.supports_prefetch.remote())
 
         # Initialize learner
         num_gpus = 0 if learner_device == "cpu" else 1
@@ -159,6 +163,7 @@ class Runner:
 
         # Initialize training configuration
         self.max_updates = max_updates
+        self.prefetch_depth = max(1, prefetch_depth) if supports_prefetch else 1
         self.save_interval = save_interval
         self.log_interval = log_interval
         self.load_checkpoint = load_checkpoint
@@ -167,6 +172,7 @@ class Runner:
         self.version = init_version
         self.eval_version = -1
         self.trained_samples = 0
+        self.inflight_updates = deque()
 
         # Initialize cached statistics
         self.latest_train_info = {}
@@ -298,17 +304,35 @@ class Runner:
 
         return avg_info
 
-    def _train_one_step(self):
-        """Run learner update if memory has enough data."""
-        if not ray.get(self.memory.ready.remote()):
-            return
-
+    def _submit_update(self):
+        """Request batches and submit one learner update without waiting for it."""
         batch_refs = []
         for i in range(len(self.learners)):
             batch_refs.append(self.memory.get_batch.remote(i, len(self.learners)))
 
         lb_zip = zip(self.learners, batch_refs)
         learn_list = [learner.learn.remote(batch_ref) for learner, batch_ref in lb_zip]
+
+        weights_ref = self.learner.get_weights.remote()
+        self.inflight_updates.append((learn_list, weights_ref))
+
+    def _can_submit(self):
+        """Return True if prefetch capacity and update budget allow another update."""
+        inflight_size = len(self.inflight_updates)
+        not_full = inflight_size < self.prefetch_depth
+        reach_limit = self.version + inflight_size >= self.max_updates
+        return not_full and not reach_limit
+
+    def _train_one_step(self):
+        """Keep learner updates in flight and finish the oldest one."""
+        if not self.inflight_updates and not ray.get(self.memory.ready.remote()):
+            time.sleep(0.01)
+            return
+
+        while self._can_submit():
+            self._submit_update()
+
+        learn_list, weights_ref = self.inflight_updates.popleft()
         infos = ray.get(learn_list)
 
         train_info = infos[0]
@@ -320,9 +344,8 @@ class Runner:
         self.version = train_info["version"]
         self.trained_samples += sum(info["trained_samples"] for info in infos)
 
-        weights_ref = self.learner.get_weights.remote()
-        ray.get(self.weight_store.set.remote(weights_ref, self.version))
-        ray.get(self.memory.on_learn.remote([info["memory"] for info in infos]))
+        self.weight_store.set.remote(weights_ref, self.version)
+        self.memory.on_learn.remote([info["memory"] for info in infos])
 
     def _log_info(self, force=False):
         """Collect runtime statistics, evaluate policy, and write training logs."""

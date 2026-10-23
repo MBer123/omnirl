@@ -145,6 +145,10 @@ class PrioritizedReplayBuffer:
         warmup_ok = self.collected_size >= self.warmup_size
         return batch_ok and warmup_ok
 
+    def supports_prefetch(self):
+        """Return True because batches can be sampled before the last update."""
+        return True
+
     def _clear(self):
         """Clear all stored transitions in the replay buffer."""
         self.available_size = 0

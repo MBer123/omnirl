@@ -133,6 +133,10 @@ class RolloutBuffer:
         """Return True if the buffer has enough samples to start training."""
         return self.is_ready
 
+    def supports_prefetch(self):
+        """Return False because batches must be collected after the last update."""
+        return False
+
     def _clear(self):
         """Clear all stored transitions in the rollout buffer."""
         self.available_chunks = 0
