@@ -27,6 +27,7 @@ class Runner:
         eval_model: Checkpoint file name of the model used for evaluation.
         num_learners: Number of learner actors.
         num_samplers: Number of sampler actors.
+        num_envs_per_sampler: Number of environments sharing each sampler policy.
         num_evaluators: Number of evaluator actors.
         num_episodes: Number of evaluation episodes per evaluator.
         max_updates: Maximum number of learner updates.
@@ -51,6 +52,7 @@ class Runner:
         eval_model: str | None = None,
         num_learners: int = 1,
         num_samplers: int = 1,
+        num_envs_per_sampler: int = 1,
         num_evaluators: int = 1,
         num_episodes: int = 10,
         max_updates: int = 10000000,
@@ -124,42 +126,45 @@ class Runner:
         self.weight_store = WeightStore.remote(init_weight, init_version)
 
         # Initialize samplers
-        self.samplers = [
-            Sampler.remote(
-                policy_cls=agent.Policy,
-                collection_cls=environment.CollectionLoop,
-                env_builder=partial(
-                    environment.build_env,
-                    env_config=env_config,
-                    role="collection",
-                ),
-                action_spec=action_spec,
-                seed=None if sampler_seed is None else sampler_seed + 1000 + i,
-                network_kwargs=network_kwargs,
-                policy_kwargs=policy_kwargs,
-                unroll_length=unroll_length,
+        self.samplers = []
+        role = "collection"
+        env_builder = partial(environment.build_env, env_config=env_config, role=role)
+        for i in range(num_samplers):
+            offset = 1000 + i * num_envs_per_sampler
+            seed = None if sampler_seed is None else sampler_seed + offset
+            self.samplers.append(
+                Sampler.remote(
+                    policy_cls=agent.Policy,
+                    collection_cls=environment.CollectionLoop,
+                    env_builder=env_builder,
+                    action_spec=action_spec,
+                    network_kwargs=network_kwargs,
+                    policy_kwargs=policy_kwargs,
+                    unroll_length=unroll_length,
+                    num_envs_per_sampler=num_envs_per_sampler,
+                    seed=seed,
+                )
             )
-            for i in range(num_samplers)
-        ]
 
         # Initialize evaluators
-        self.evaluators = [
-            Evaluator.remote(
-                policy_cls=agent.Policy,
-                evaluation_cls=environment.EvaluationLoop,
-                env_builder=partial(
-                    environment.build_env,
-                    env_config=env_config,
-                    role="evaluation",
-                ),
-                action_spec=action_spec,
-                num_episodes=num_episodes,
-                seed=None if evaluator_seed is None else evaluator_seed + 2000 + i,
-                network_kwargs=network_kwargs,
-                policy_kwargs=policy_kwargs,
+        self.evaluators = []
+        role = "evaluation"
+        env_builder = partial(environment.build_env, env_config=env_config, role=role)
+        for i in range(num_evaluators):
+            offset = 2000 + i
+            seed = None if evaluator_seed is None else evaluator_seed + offset
+            self.evaluators.append(
+                Evaluator.remote(
+                    policy_cls=agent.Policy,
+                    evaluation_cls=environment.EvaluationLoop,
+                    env_builder=env_builder,
+                    action_spec=action_spec,
+                    network_kwargs=network_kwargs,
+                    policy_kwargs=policy_kwargs,
+                    num_episodes=num_episodes,
+                    seed=seed,
+                )
             )
-            for i in range(num_evaluators)
-        ]
 
         # Initialize training configuration
         self.max_updates = max_updates

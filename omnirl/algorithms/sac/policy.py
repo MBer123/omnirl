@@ -68,47 +68,50 @@ class Policy:
         if version is not None:
             self.version = version
 
+    @torch.no_grad()
     def choose_action(self, observation):
         """Select a deterministic action for evaluation."""
         observation = np.asarray(observation, dtype=np.float32)
         state = torch.as_tensor(observation, device=self.device).unsqueeze(0)
 
-        with torch.no_grad():
-            if self.is_continuous:
-                action_mean, _ = self.actor(state)
-                action = torch.tanh(action_mean)
-                action = action * self.action_scale + self.action_bias
-                return action.squeeze(0).cpu().numpy()
-            else:
-                action_logits = self.actor(state)
-                action = torch.argmax(action_logits, dim=-1)
-                return int(action.item())
+        if self.is_continuous:
+            action_mean, _ = self.actor(state)
+            action = torch.tanh(action_mean)
+            action = action * self.action_scale + self.action_bias
+            return action.squeeze(0).cpu().numpy()
+        else:
+            action_logits = self.actor(state)
+            action = torch.argmax(action_logits, dim=-1)
+            return int(action.item())
 
-    def sample_action(self, observation):
+    @torch.no_grad()
+    def sample_action(self, observation, batched=False):
         """Select a stochastic action during training."""
         if self.random_warmup and self.version == 0:
             if self.is_continuous:
-                action = torch.empty_like(self.action_scale).uniform_(-1, 1)
-                env_action = action * self.action_scale + self.action_bias
-                action = action.cpu().numpy()
-                env_action = env_action.cpu().numpy()
+                scale = self.action_scale
+                scale = scale.expand(len(observation), -1) if batched else scale
+                action = torch.empty_like(scale).uniform_(-1, 1)
             else:
-                action = int(torch.randint(self.action_dim, (1,)).item())
-                env_action = action
+                size = len(observation) if batched else 1
+                action = torch.randint(self.action_dim, (size,))
         else:
             observation = np.asarray(observation, dtype=np.float32)
-            state = torch.as_tensor(observation, device=self.device).unsqueeze(0)
-            with torch.no_grad():
-                if self.is_continuous:
-                    action_mean, action_log_std = self.actor(state)
-                    dist = Normal(action_mean, action_log_std.exp())
-                    action = torch.tanh(dist.sample()).squeeze(0)
-                    env_action = action * self.action_scale + self.action_bias
-                    action = action.cpu().numpy()
-                    env_action = env_action.cpu().numpy()
-                else:
-                    action_logits = self.actor(state)
-                    action = int(Categorical(logits=action_logits).sample().item())
-                    env_action = action
+            state = torch.as_tensor(observation, device=self.device)
+            state = state if batched else state.unsqueeze(0)
+            if self.is_continuous:
+                action_mean, action_log_std = self.actor(state)
+                action = torch.tanh(Normal(action_mean, action_log_std.exp()).sample())
+            else:
+                action_logits = self.actor(state)
+                action = Categorical(logits=action_logits).sample()
+            action = action if batched else action[0]
+
+        if self.is_continuous:
+            env_action = action * self.action_scale + self.action_bias
+            action, env_action = action.cpu().numpy(), env_action.cpu().numpy()
+        else:
+            action = action.cpu().numpy() if batched else int(action.item())
+            env_action = action
 
         return {"env_action": env_action, "data": {"action": action}}

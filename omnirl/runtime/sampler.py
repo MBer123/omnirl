@@ -16,8 +16,9 @@ class Sampler:
         action_spec: Environment arguments for policy initialization.
         network_kwargs: Keyword arguments used to build the policy network.
         policy_kwargs: Keyword arguments used to build the policy.
-        unroll_length: Number of transitions collected before each buffer write.
+        unroll_length: Number of transitions collected per environment per chunk.
         seed: Random seed used to ensure consistent results across runs.
+        num_envs_per_sampler: Number of environments sharing one inference batch.
     """
 
     def __init__(
@@ -29,6 +30,7 @@ class Sampler:
         network_kwargs: dict | None = None,
         policy_kwargs: dict | None = None,
         unroll_length: int = 1,
+        num_envs_per_sampler: int = 1,
         seed: int | None = None,
     ):
         # Limit PyTorch CPU threads
@@ -45,7 +47,11 @@ class Sampler:
             **action_spec,
             **policy_kwargs,
         )
-        self.collection = collection_cls(env_builder=env_builder, seed=seed)
+        self.collection = collection_cls(
+            env_builder=env_builder,
+            seed=seed,
+            num_envs=num_envs_per_sampler,
+        )
         self.unroll_length = unroll_length
         self.version = -1
 
@@ -61,6 +67,7 @@ class Sampler:
         """Continuously collect environment data and send it to the buffer."""
         while True:
             self._sync_weights(weight_store)
-            rollout = self.collection.collect(self.policy, self.unroll_length)
-            rollout["version"] = self.version
-            memory.add.remote(rollout)
+            rollouts = self.collection.collect(self.policy, self.unroll_length)
+            for rollout in rollouts:
+                rollout["version"] = self.version
+                memory.add.remote(rollout)

@@ -7,6 +7,7 @@ runner:
   ckpt_dir: checkpoints/cartpole
   num_learners: 1
   num_samplers: 1
+  num_envs_per_sampler: 4
   num_evaluators: 1
   num_episodes: 5
   max_updates: 100

@@ -63,22 +63,30 @@ class Policy:
             new_epsilon = self.epsilon_start * self.epsilon_decay**self.version
             self.epsilon = max(self.epsilon_end, new_epsilon)
 
+    @torch.no_grad()
     def choose_action(self, observation):
         """Greedy action selection during evaluation."""
         observation = np.asarray(observation, dtype=np.float32)
         state = torch.as_tensor(observation, device=self.device).unsqueeze(0)
 
-        with torch.no_grad():
-            q_values = self.q_eval(state)
+        q_values = self.q_eval(state)
 
         return int(torch.argmax(q_values, dim=-1).item())
 
-    def sample_action(self, observation):
-        """Select an epsilon-greedy action during training."""
-        random_action = self.random_warmup and self.version == 0
-        random_action = random_action or np.random.random() < self.epsilon
-        if random_action:
-            action = int(torch.randint(self.action_dim, (1,)).item())
-        else:
-            action = self.choose_action(observation)
+    @torch.no_grad()
+    def sample_action(self, observation, batched=False):
+        """Select epsilon-greedy actions, optionally for a batch of envs."""
+        observation = np.asarray(observation, dtype=np.float32)
+        state = torch.as_tensor(observation, device=self.device)
+        state = state if batched else state.unsqueeze(0)
+
+        action = torch.randint(self.action_dim, (len(state),)).numpy()
+        if not (self.random_warmup and self.version == 0):
+            random_mask = np.random.random(len(state)) < self.epsilon
+            if not random_mask.all():
+                q_values = self.q_eval(state)
+                greedy_action = torch.argmax(q_values, dim=-1).cpu().numpy()
+                action = np.where(random_mask, action, greedy_action)
+
+        action = action if batched else int(action[0])
         return {"env_action": action, "data": {"action": action}}

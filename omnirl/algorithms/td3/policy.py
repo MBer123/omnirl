@@ -62,30 +62,33 @@ class Policy:
         if version is not None:
             self.version = version
 
+    @torch.no_grad()
     def choose_action(self, observation):
         """Select a deterministic action for evaluation."""
         observation = np.asarray(observation, dtype=np.float32)
         state = torch.as_tensor(observation, device=self.device).unsqueeze(0)
 
-        with torch.no_grad():
-            action = self.actor(state)
-            action = action * self.action_scale + self.action_bias
+        action = self.actor(state)
+        action = action * self.action_scale + self.action_bias
 
         return action.squeeze(0).cpu().numpy()
 
-    def sample_action(self, observation):
+    @torch.no_grad()
+    def sample_action(self, observation, batched=False):
         """Select a noisy normalized action during training."""
         if self.random_warmup and self.version == 0:
-            action = torch.empty_like(self.action_scale).uniform_(-1, 1)
+            scale = self.action_scale
+            scale = scale.expand(len(observation), -1) if batched else scale
+            action = torch.empty_like(scale).uniform_(-1, 1)
         else:
             observation = np.asarray(observation, dtype=np.float32)
-            state = torch.as_tensor(observation, device=self.device).unsqueeze(0)
-            with torch.no_grad():
-                action = self.actor(state)
-                noise = torch.randn_like(action) * self.action_noise
-                action = torch.clamp(action + noise, -1, 1).squeeze(0)
+            state = torch.as_tensor(observation, device=self.device)
+            state = state if batched else state.unsqueeze(0)
+            action = self.actor(state)
+            noise = torch.randn_like(action) * self.action_noise
+            action = torch.clamp(action + noise, -1, 1)
+            action = action if batched else action[0]
 
         env_action = action * self.action_scale + self.action_bias
-        action = action.cpu().numpy()
-        env_action = env_action.cpu().numpy()
+        action, env_action = action.cpu().numpy(), env_action.cpu().numpy()
         return {"env_action": env_action, "data": {"action": action}}

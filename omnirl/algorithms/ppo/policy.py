@@ -64,45 +64,46 @@ class Policy:
         if version is not None:
             self.version = version
 
+    @torch.no_grad()
     def choose_action(self, observation):
         """Select a deterministic action for evaluation."""
         observation = np.asarray(observation, dtype=np.float32)
         state = torch.as_tensor(observation, device=self.device).unsqueeze(0)
 
-        with torch.no_grad():
-            if self.is_continuous:
-                action_mean, _ = self.actor(state)
-                action = torch.tanh(action_mean)
-                action = action * self.action_scale + self.action_bias
-                return action.squeeze(0).cpu().numpy()
-            else:
-                action_logits = self.actor(state)
-                action = torch.argmax(action_logits, dim=-1)
-                return int(action.item())
+        if self.is_continuous:
+            action_mean, _ = self.actor(state)
+            action = torch.tanh(action_mean)
+            action = action * self.action_scale + self.action_bias
+            return action.squeeze(0).cpu().numpy()
+        else:
+            action_logits = self.actor(state)
+            action = torch.argmax(action_logits, dim=-1)
+            return int(action.item())
 
-    def sample_action(self, observation):
+    @torch.no_grad()
+    def sample_action(self, observation, batched=False):
         """Select a probabilistic action and its log probability."""
         observation = np.asarray(observation, dtype=np.float32)
-        state = torch.as_tensor(observation, device=self.device).unsqueeze(0)
+        state = torch.as_tensor(observation, device=self.device)
+        state = state if batched else state.unsqueeze(0)
 
-        with torch.no_grad():
-            if self.is_continuous:
-                action_mean, action_log_std = self.actor(state)
-                dist = Normal(action_mean, action_log_std.exp())
-                action = dist.sample()
-                log_prob = dist.log_prob(action).sum(dim=-1)
-                env_action = torch.tanh(action) * self.action_scale + self.action_bias
-                action = action.squeeze(0).cpu().numpy()
-                env_action = env_action.squeeze(0).cpu().numpy()
-                log_prob = log_prob.squeeze(0).item()
-            else:
-                action_logits = self.actor(state)
-                dist = Categorical(logits=action_logits)
-                action = dist.sample()
-                log_prob = dist.log_prob(action).item()
-                action = int(action.item())
-                env_action = action
+        if self.is_continuous:
+            action_mean, action_log_std = self.actor(state)
+            dist = Normal(action_mean, action_log_std.exp())
+            action = dist.sample()
+            log_prob = dist.log_prob(action).sum(dim=-1)
+            action = action if batched else action[0]
+            env_action = torch.tanh(action) * self.action_scale + self.action_bias
+            action, env_action = action.cpu().numpy(), env_action.cpu().numpy()
+        else:
+            action_logits = self.actor(state)
+            dist = Categorical(logits=action_logits)
+            action = dist.sample()
+            log_prob = dist.log_prob(action)
+            action = action.cpu().numpy() if batched else int(action.item())
+            env_action = action
 
+        log_prob = log_prob.cpu().numpy() if batched else log_prob.item()
         return {
             "env_action": env_action,
             "data": {"action": action, "log_prob": log_prob},
