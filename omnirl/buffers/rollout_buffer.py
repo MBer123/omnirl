@@ -55,52 +55,33 @@ class RolloutBuffer:
         if self.store_log_probs:
             self.log_prob_memory = np.zeros(chunk_shape, dtype=np.float32)
 
-    def put_chunk(
-        self,
-        version,
-        states,
-        actions,
-        rewards,
-        next_states,
-        terminals,
-        dones,
-        log_probs=None,
-    ):
-        """Store a chunk of transitions into the rollout buffer."""
-        if self.track_version and version < self.version:
+    def add(self, rollout):
+        """Store a rollout with leading [num_envs, unroll_length] dimensions."""
+        if self.track_version and rollout["version"] < self.version:
             return
 
         if self.is_ready:
             return
 
-        self.state_memory[self.available_chunks] = states
-        self.action_memory[self.available_chunks] = actions
-        self.reward_memory[self.available_chunks] = rewards
-        self.next_state_memory[self.available_chunks] = next_states
-        self.terminal_memory[self.available_chunks] = terminals
-        self.done_memory[self.available_chunks] = dones
-        if self.store_log_probs:
-            self.log_prob_memory[self.available_chunks] = log_probs
+        size = min(rollout["rewards"].shape[0], self.max_chunks - self.available_chunks)
+        start = self.available_chunks
+        end = start + size
 
-        self.collected_chunks += 1
-        self.available_chunks += 1
+        policy_data = rollout["policy_data"]
+        self.state_memory[start:end] = rollout["states"][:size]
+        self.action_memory[start:end] = policy_data["action"][:size]
+        self.reward_memory[start:end] = rollout["rewards"][:size]
+        self.next_state_memory[start:end] = rollout["next_states"][:size]
+        self.terminal_memory[start:end] = rollout["terminals"][:size]
+        self.done_memory[start:end] = rollout["dones"][:size]
+        if self.store_log_probs:
+            self.log_prob_memory[start:end] = policy_data["log_prob"][:size]
+
+        self.collected_chunks += size
+        self.available_chunks = end
 
         if self.available_chunks == self.max_chunks:
             self.is_ready = True
-
-    def add(self, rollout):
-        """Store one rollout collected by a runtime sampler."""
-        policy_data = rollout["policy_data"]
-        self.put_chunk(
-            rollout["version"],
-            rollout["states"],
-            policy_data["action"],
-            rollout["rewards"],
-            rollout["next_states"],
-            rollout["terminals"],
-            rollout["dones"],
-            policy_data.get("log_prob"),
-        )
 
     def get_batch(self, rank, world_size):
         """Return collected transitions from the rollout buffer."""

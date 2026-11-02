@@ -96,15 +96,14 @@ class RuntimeTest(unittest.TestCase):
         }
         memory = ReplayBuffer.remote(**memory_kwargs)
 
-        for i in range(3):
-            transition = (
-                np.full(4, i, dtype=np.float32),
-                np.asarray(i % 2),
-                np.asarray(float(i)),
-                np.full(4, i + 1, dtype=np.float32),
-                np.asarray(False),
-            )
-            ray.get(memory.put.remote(*transition))
+        rollout = {
+            "states": np.zeros((1, 3, 4), dtype=np.float32),
+            "next_states": np.ones((1, 3, 4), dtype=np.float32),
+            "rewards": np.arange(3, dtype=np.float32).reshape(1, 3),
+            "terminals": np.zeros((1, 3), dtype=np.bool_),
+            "policy_data": {"action": np.zeros((1, 3), dtype=np.int64)},
+        }
+        ray.get(memory.add.remote(rollout))
 
         self.assertTrue(ray.get(memory.ready.remote()))
         batch = ray.get(memory.get_batch.remote(0, 1))
@@ -125,15 +124,14 @@ class RuntimeTest(unittest.TestCase):
         }
         memory = PrioritizedReplayBuffer.remote(**memory_kwargs)
 
-        for i in range(3):
-            transition = (
-                np.full(4, i, dtype=np.float32),
-                np.asarray(i % 2),
-                np.asarray(float(i)),
-                np.full(4, i + 1, dtype=np.float32),
-                np.asarray(False),
-            )
-            ray.get(memory.put.remote(*transition))
+        rollout = {
+            "states": np.zeros((1, 3, 4), dtype=np.float32),
+            "next_states": np.ones((1, 3, 4), dtype=np.float32),
+            "rewards": np.arange(3, dtype=np.float32).reshape(1, 3),
+            "terminals": np.zeros((1, 3), dtype=np.bool_),
+            "policy_data": {"action": np.zeros((1, 3), dtype=np.int64)},
+        }
+        ray.get(memory.add.remote(rollout))
 
         batch = ray.get(memory.get_batch.remote(0, 1))
         self.assertEqual(batch["weights"].shape, (2,))
@@ -156,15 +154,14 @@ class RuntimeTest(unittest.TestCase):
             "max_size": 4,
         }
         weighted_memory = PrioritizedReplayBuffer.remote(**weighted_memory_kwargs)
-        for i in range(4):
-            transition = (
-                np.asarray([i], dtype=np.float32),
-                np.asarray(i % 2),
-                np.asarray(float(i)),
-                np.asarray([i + 1], dtype=np.float32),
-                np.asarray(False),
-            )
-            ray.get(weighted_memory.put.remote(*transition))
+        rollout = {
+            "states": np.zeros((1, 4, 1), dtype=np.float32),
+            "next_states": np.ones((1, 4, 1), dtype=np.float32),
+            "rewards": np.zeros((1, 4), dtype=np.float32),
+            "terminals": np.zeros((1, 4), dtype=np.bool_),
+            "policy_data": {"action": np.zeros((1, 4), dtype=np.int64)},
+        }
+        ray.get(weighted_memory.add.remote(rollout))
 
         priorities = np.asarray([1, 2, 3, 4], dtype=np.float32) + 1e-6
         learn_info = {
@@ -230,17 +227,19 @@ class RuntimeTest(unittest.TestCase):
         }
         memory = RolloutBuffer.remote(**memory_kwargs)
 
-        chunk = (
-            0,
-            np.zeros((2, 4), dtype=np.float32),
-            np.zeros(2, dtype=np.int64),
-            np.zeros(2, dtype=np.float32),
-            np.ones((2, 4), dtype=np.float32),
-            np.zeros(2, dtype=np.bool_),
-            np.zeros(2, dtype=np.bool_),
-            np.zeros(2, dtype=np.float32),
-        )
-        ray.get(memory.put_chunk.remote(*chunk))
+        rollout = {
+            "version": 0,
+            "states": np.zeros((1, 2, 4), dtype=np.float32),
+            "next_states": np.ones((1, 2, 4), dtype=np.float32),
+            "rewards": np.zeros((1, 2), dtype=np.float32),
+            "terminals": np.zeros((1, 2), dtype=np.bool_),
+            "dones": np.zeros((1, 2), dtype=np.bool_),
+            "policy_data": {
+                "action": np.zeros((1, 2), dtype=np.int64),
+                "log_prob": np.zeros((1, 2), dtype=np.float32),
+            },
+        }
+        ray.get(memory.add.remote(rollout))
 
         self.assertTrue(ray.get(memory.ready.remote()))
         batch = ray.get(memory.get_batch.remote(0, 1))

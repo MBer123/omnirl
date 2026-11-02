@@ -67,7 +67,6 @@ class Sampler:
         """Continuously collect environment data and send it to the buffer."""
         while True:
             self._sync_weights(weight_store)
-            rollouts = self.collection.collect(self.policy, self.unroll_length)
-            for rollout in rollouts:
-                rollout["version"] = self.version
-                memory.add.remote(rollout)
+            rollout = self.collection.collect(self.policy, self.unroll_length)
+            rollout["version"] = self.version
+            memory.add.remote(rollout)

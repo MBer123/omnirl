@@ -19,7 +19,7 @@ class CollectionLoop:
             self.observations.append(np.array(obs, copy=True))
 
     def collect(self, policy, num_steps):
-        """Return one fixed-length rollout per env, using batched inference."""
+        """Return a rollout with leading [num_envs, num_steps] dimensions."""
         fields = ("states", "rewards", "next_states", "terminals", "dones")
         rollouts = [{name: [] for name in fields} for _ in self.envs]
         rollouts = [{**rollout, "policy_data": {}} for rollout in rollouts]
@@ -47,10 +47,14 @@ class CollectionLoop:
                     next_observation, _ = env.reset()
                 self.observations[i] = np.array(next_observation, copy=True)
 
-        for rollout in rollouts:
-            for name in fields:
-                rollout[name] = np.asarray(rollout[name])
-            for name, values in rollout["policy_data"].items():
-                rollout["policy_data"][name] = np.asarray(values)
+        rollout = {}
+        for name in fields:
+            values = [item[name] for item in rollouts]
+            rollout[name] = np.asarray(values)
 
-        return rollouts
+        policy_data = {}
+        for name in rollouts[0]["policy_data"]:
+            values = [item["policy_data"][name] for item in rollouts]
+            policy_data[name] = np.asarray(values)
+        rollout["policy_data"] = policy_data
+        return rollout
