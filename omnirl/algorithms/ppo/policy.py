@@ -81,18 +81,16 @@ class Policy:
             return int(action.item())
 
     @torch.no_grad()
-    def sample_action(self, observation, batched=False):
-        """Select a probabilistic action and its log probability."""
-        observation = np.asarray(observation, dtype=np.float32)
-        state = torch.as_tensor(observation, device=self.device)
-        state = state if batched else state.unsqueeze(0)
+    def sample_action(self, observations):
+        """Sample actions and log probabilities for a batch of observations."""
+        observations = np.asarray(observations, dtype=np.float32)
+        state = torch.as_tensor(observations, device=self.device)
 
         if self.is_continuous:
             action_mean, action_log_std = self.actor(state)
             dist = Normal(action_mean, action_log_std.exp())
             action = dist.sample()
             log_prob = dist.log_prob(action).sum(dim=-1)
-            action = action if batched else action[0]
             env_action = torch.tanh(action) * self.action_scale + self.action_bias
             action, env_action = action.cpu().numpy(), env_action.cpu().numpy()
         else:
@@ -100,10 +98,10 @@ class Policy:
             dist = Categorical(logits=action_logits)
             action = dist.sample()
             log_prob = dist.log_prob(action)
-            action = action.cpu().numpy() if batched else int(action.item())
+            action = action.cpu().numpy()
             env_action = action
 
-        log_prob = log_prob.cpu().numpy() if batched else log_prob.item()
+        log_prob = log_prob.cpu().numpy()
         return {
             "env_action": env_action,
             "data": {"action": action, "log_prob": log_prob},

@@ -26,7 +26,7 @@ class CollectionLoop:
 
         for _ in range(num_steps):
             observations = np.stack(self.observations)
-            decision = policy.sample_action(observations, batched=True)
+            decision = policy.sample_action(observations)
 
             for i, env in enumerate(self.envs):
                 action = decision["env_action"][i]

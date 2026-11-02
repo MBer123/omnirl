@@ -169,7 +169,7 @@ __all__ = ["Learner", "Memory", "Policy"]
 The implementation should provide:
 
 - `Learner`: a Ray actor that implements learning, checkpointing, and versioned weight access. Existing learners can be used as interface examples.
-- `Policy`: a local inference class with deterministic `choose_action` and exploratory `sample_action` methods.
+- `Policy`: a local inference class with deterministic `choose_action(observation)` for a single observation and exploratory `sample_action(observations)` for a batch. Sampling inputs and outputs must retain the leading batch dimension, including when the batch size is 1.
 - `Memory`: one of the buffers in `omnirl.buffers`, or a compatible new Ray actor.
 - Network definitions under `omnirl.networks` when the algorithm needs a new architecture.
 - An agent YAML whose `agent.module` points to `omnirl.algorithms.<name>` and whose `modules` section supplies the constructor parameters.

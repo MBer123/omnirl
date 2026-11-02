@@ -81,22 +81,20 @@ class Policy:
             return int(action.item())
 
     @torch.no_grad()
-    def sample_action(self, observation, batched=False):
-        """Select a probabilistic action during training."""
-        observation = np.asarray(observation, dtype=np.float32)
-        state = torch.as_tensor(observation, device=self.device)
-        state = state if batched else state.unsqueeze(0)
+    def sample_action(self, observations):
+        """Sample actions for observations shaped [batch, *state_shape]."""
+        observations = np.asarray(observations, dtype=np.float32)
+        state = torch.as_tensor(observations, device=self.device)
 
         if self.is_continuous:
             action_mean, action_log_std = self.actor(state)
             action = Normal(action_mean, action_log_std.exp()).sample()
-            action = action if batched else action[0]
             env_action = torch.tanh(action) * self.action_scale + self.action_bias
             action, env_action = action.cpu().numpy(), env_action.cpu().numpy()
         else:
             action_logits = self.actor(state)
             action = Categorical(logits=action_logits).sample()
-            action = action.cpu().numpy() if batched else int(action.item())
+            action = action.cpu().numpy()
             env_action = action
 
         return {"env_action": env_action, "data": {"action": action}}

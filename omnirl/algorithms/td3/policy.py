@@ -74,20 +74,17 @@ class Policy:
         return action.squeeze(0).cpu().numpy()
 
     @torch.no_grad()
-    def sample_action(self, observation, batched=False):
-        """Select a noisy normalized action during training."""
+    def sample_action(self, observations):
+        """Sample noisy normalized actions for a batch of observations."""
         if self.random_warmup and self.version == 0:
-            scale = self.action_scale
-            scale = scale.expand(len(observation), -1) if batched else scale
+            scale = self.action_scale.expand(len(observations), -1)
             action = torch.empty_like(scale).uniform_(-1, 1)
         else:
-            observation = np.asarray(observation, dtype=np.float32)
-            state = torch.as_tensor(observation, device=self.device)
-            state = state if batched else state.unsqueeze(0)
+            observations = np.asarray(observations, dtype=np.float32)
+            state = torch.as_tensor(observations, device=self.device)
             action = self.actor(state)
             noise = torch.randn_like(action) * self.action_noise
             action = torch.clamp(action + noise, -1, 1)
-            action = action if batched else action[0]
 
         env_action = action * self.action_scale + self.action_bias
         action, env_action = action.cpu().numpy(), env_action.cpu().numpy()

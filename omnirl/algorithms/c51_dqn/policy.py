@@ -84,11 +84,10 @@ class Policy:
         return int(torch.argmax(q_values, dim=-1).item())
 
     @torch.no_grad()
-    def sample_action(self, observation, batched=False):
-        """Select epsilon-greedy actions, optionally for a batch of envs."""
-        observation = np.asarray(observation, dtype=np.float32)
-        state = torch.as_tensor(observation, device=self.device)
-        state = state if batched else state.unsqueeze(0)
+    def sample_action(self, observations):
+        """Select epsilon-greedy actions for a batch of observations."""
+        observations = np.asarray(observations, dtype=np.float32)
+        state = torch.as_tensor(observations, device=self.device)
 
         action = torch.randint(self.action_dim, (len(state),)).numpy()
         if not (self.random_warmup and self.version == 0):
@@ -100,5 +99,4 @@ class Policy:
                 greedy_action = torch.argmax(q_values, dim=-1).cpu().numpy()
                 action = np.where(random_mask, action, greedy_action)
 
-        action = action if batched else int(action[0])
         return {"env_action": action, "data": {"action": action}}
