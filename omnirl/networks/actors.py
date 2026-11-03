@@ -11,8 +11,8 @@ class StochasticActorNetwork(nn.Module):
     Args:
         state_dim: Dimension of the environment state space.
         action_dim: Dimension of the environment action space.
-        is_continuous: Whether the action space is continuous.
         layer_type: Type of feature network to use.
+        is_continuous: Whether the action space is continuous.
         log_std_min: Minimum value for log standard deviation.
         log_std_max: Maximum value for log standard deviation.
         network_kwargs: Keyword arguments used to build the feature network.
