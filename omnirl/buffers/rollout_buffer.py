@@ -12,8 +12,8 @@ class RolloutBuffer:
         state_dtype: Data type of the environment state space.
         action_dim: Dimension of the environment action space.
         is_continuous: Whether the action space is continuous.
-        unroll_length: Number of transitions contained in each rollout segment.
-        max_chunks: Maximum number of rollout chunks stored in the buffer.
+        batch_size: Transitions per update, rounded down to complete chunks.
+        collection_fragment_length: Number of steps collected per environment.
         track_version: Whether to reject stale rollouts and track learner versions.
     """
 
@@ -23,12 +23,12 @@ class RolloutBuffer:
         state_dtype: np.dtype | type,
         action_dim: int,
         is_continuous: bool = False,
-        unroll_length: int = 32,
-        max_chunks: int = 64,
+        batch_size: int = 2048,
+        collection_fragment_length: int = 1,
         track_version: bool = True,
     ):
-        self.unroll_length = unroll_length
-        self.max_chunks = max_chunks
+        self.unroll_length = collection_fragment_length
+        self.max_chunks = batch_size // self.unroll_length
         self.track_version = track_version
 
         self.collected_chunks = 0
@@ -38,7 +38,7 @@ class RolloutBuffer:
         self.version = -1
 
         state_dim = (state_dim,) if isinstance(state_dim, int) else tuple(state_dim)
-        chunk_shape = (max_chunks, unroll_length)
+        chunk_shape = (self.max_chunks, self.unroll_length)
 
         self.state_memory = np.zeros((*chunk_shape, *state_dim), dtype=state_dtype)
         if is_continuous:

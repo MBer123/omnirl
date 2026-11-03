@@ -29,22 +29,22 @@ class IntegrationTest(unittest.TestCase):
             },
         }
 
-        for num_envs in (1, 4):
-            with self.subTest(num_envs=num_envs):
-                self.run_one_update(dqn, agent_config, num_envs)
+        for num_envs, fragment_length in ((1, 1), (4, 3)):
+            with self.subTest(num_envs=num_envs, fragment_length=fragment_length):
+                self.run_one_update(dqn, agent_config, num_envs, fragment_length)
 
     def test_ppo_runner_one_update(self):
         agent_config = {
             "learner": {"k_epochs": 1, "num_minibatches": 1},
             "memory": {
-                "unroll_length": 2,
-                "max_chunks": 3,
+                "batch_size": 6,
             },
             "network": {"layer_type": "MLP", "mlp_hidden_dims": [8, 8]},
         }
-        self.run_one_update(ppo, agent_config, num_envs=4)
+        trained_samples = self.run_one_update(ppo, agent_config, num_envs=4, fragment_length=3)
+        self.assertEqual(trained_samples, 6)
 
-    def run_one_update(self, agent, agent_config, num_envs):
+    def run_one_update(self, agent, agent_config, num_envs, fragment_length=1):
         with tempfile.TemporaryDirectory() as ckpt_dir:
             runner_kwargs = {
                 "agent": agent,
@@ -55,6 +55,7 @@ class IntegrationTest(unittest.TestCase):
                 "num_learners": 1,
                 "num_samplers": 1,
                 "num_envs_per_sampler": num_envs,
+                "collection_fragment_length": fragment_length,
                 "num_evaluators": 1,
                 "num_episodes": 1,
                 "max_updates": 1,
@@ -71,6 +72,7 @@ class IntegrationTest(unittest.TestCase):
                 runner.fit()
                 self.assertEqual(runner.version, 1)
                 self.assertGreater(runner.trained_samples, 0)
+                return runner.trained_samples
             finally:
                 ray.shutdown()
 

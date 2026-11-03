@@ -67,6 +67,10 @@ class StructureTest(unittest.TestCase):
                     (example_dir / "test.yaml").read_text(encoding="utf-8")
                 )
                 self.assertEqual(agent["agent"]["module"], "omnirl.algorithms.ppo")
+                self.assertGreaterEqual(
+                    agent["modules"]["memory"]["batch_size"],
+                    train["runner"]["collection_fragment_length"],
+                )
                 for component in ("actor", "critic"):
                     self.assertEqual(
                         agent["modules"]["network"][component]["layer_type"], layer_type
@@ -153,6 +157,7 @@ class StructureTest(unittest.TestCase):
             runner_config = yaml.safe_load(file)
         with (example_dir / "ppo.yaml").open("r", encoding="utf-8") as file:
             agent_config = yaml.safe_load(file)
+        runner_config["runner"]["collection_fragment_length"] = 8
 
         agent = object()
         environment = object()
@@ -166,6 +171,7 @@ class StructureTest(unittest.TestCase):
         expected_env_config = {"id": "CartPole-v1", "render_mode": None}
         self.assertEqual(captured_kwargs["env_config"], expected_env_config)
         self.assertEqual(captured_kwargs["agent_config"], agent_config["modules"])
+        self.assertEqual(captured_kwargs["collection_fragment_length"], 8)
         self.assertEqual(captured_kwargs["learner_seed"], 0)
         self.assertEqual(captured_kwargs["sampler_seed"], 0)
         self.assertEqual(captured_kwargs["evaluator_seed"], 0)

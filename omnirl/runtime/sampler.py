@@ -16,9 +16,9 @@ class Sampler:
         action_spec: Environment arguments for policy initialization.
         network_kwargs: Keyword arguments used to build the policy network.
         policy_kwargs: Keyword arguments used to build the policy.
-        unroll_length: Number of transitions collected per environment per chunk.
-        seed: Random seed used to ensure consistent results across runs.
         num_envs_per_sampler: Number of environments sharing one inference batch.
+        collection_fragment_length: Steps collected per environment per transfer.
+        seed: Random seed used to ensure consistent results across runs.
     """
 
     def __init__(
@@ -29,8 +29,8 @@ class Sampler:
         action_spec,
         network_kwargs: dict | None = None,
         policy_kwargs: dict | None = None,
-        unroll_length: int = 1,
         num_envs_per_sampler: int = 1,
+        collection_fragment_length: int = 1,
         seed: int | None = None,
     ):
         # Limit PyTorch CPU threads
@@ -52,7 +52,7 @@ class Sampler:
             seed=seed,
             num_envs=num_envs_per_sampler,
         )
-        self.unroll_length = unroll_length
+        self.fragment_length = collection_fragment_length
         self.version = -1
 
     def _sync_weights(self, weight_store):
@@ -68,7 +68,7 @@ class Sampler:
         pending_add = None
         while True:
             self._sync_weights(weight_store)
-            rollout = self.collection.collect(self.policy, self.unroll_length)
+            rollout = self.collection.collect(self.policy, self.fragment_length)
             rollout["version"] = self.version
             if pending_add is not None:
                 ray.get(pending_add)

@@ -8,6 +8,7 @@ runner:
   num_learners: 1
   num_samplers: 1
   num_envs_per_sampler: 4
+  collection_fragment_length: 128
   num_evaluators: 1
   num_episodes: 5
   max_updates: 100

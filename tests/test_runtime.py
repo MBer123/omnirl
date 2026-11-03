@@ -93,6 +93,7 @@ class RuntimeTest(unittest.TestCase):
             "batch_size": 2,
             "warmup_size": 2,
             "max_size": 8,
+            "collection_fragment_length": 3,
         }
         memory = ReplayBuffer.remote(**memory_kwargs)
 
@@ -129,6 +130,7 @@ class RuntimeTest(unittest.TestCase):
             "batch_size": 2,
             "warmup_size": 2,
             "max_size": 8,
+            "collection_fragment_length": 3,
         }
         memory = PrioritizedReplayBuffer.remote(**memory_kwargs)
 
@@ -238,30 +240,47 @@ class RuntimeTest(unittest.TestCase):
             "state_dim": 4,
             "state_dtype": np.float32,
             "action_dim": 2,
-            "unroll_length": 2,
-            "max_chunks": 1,
+            "batch_size": 5,
+            "collection_fragment_length": 2,
         }
         memory = RolloutBuffer.remote(**memory_kwargs)
+        self.assertFalse(ray.get(memory.ready.remote()))
+        self.assertIsNone(ray.get(memory.get_batch.remote(0, 1)))
+        self.assertEqual(
+            ray.get(memory.stats.remote()),
+            {"available_data": 0, "collected_data": 0},
+        )
 
         rollout = {
             "version": 0,
-            "states": np.zeros((1, 2, 4), dtype=np.float32),
-            "next_states": np.ones((1, 2, 4), dtype=np.float32),
-            "rewards": np.zeros((1, 2), dtype=np.float32),
-            "terminals": np.zeros((1, 2), dtype=np.bool_),
-            "dones": np.zeros((1, 2), dtype=np.bool_),
-            "action": np.zeros((1, 2), dtype=np.int64),
+            "states": np.arange(24, dtype=np.float32).reshape(3, 2, 4),
+            "next_states": np.ones((3, 2, 4), dtype=np.float32),
+            "rewards": np.zeros((3, 2), dtype=np.float32),
+            "terminals": np.zeros((3, 2), dtype=np.bool_),
+            "dones": np.zeros((3, 2), dtype=np.bool_),
+            "action": np.zeros((3, 2), dtype=np.int64),
             "extra_data": {
-                "log_probs": np.zeros((1, 2), dtype=np.float32),
+                "log_probs": np.zeros((3, 2), dtype=np.float32),
             },
         }
         ray.get(memory.add.remote(rollout))
 
         self.assertTrue(ray.get(memory.ready.remote()))
         batch = ray.get(memory.get_batch.remote(0, 1))
-        self.assertEqual(batch["states"].shape, (1, 2, 4))
-        self.assertEqual(batch["log_probs"].shape, (1, 2))
+        self.assertEqual(batch["states"].shape, (2, 2, 4))
+        self.assertEqual(batch["log_probs"].shape, (2, 2))
         self.assertNotIn("extra_data", batch)
+        np.testing.assert_array_equal(batch["states"], rollout["states"][:2])
+        self.assertEqual(
+            ray.get(memory.stats.remote()),
+            {"available_data": 4, "collected_data": 4},
+        )
+
+        ray.get(memory.on_learn.remote([{"version": 1}]))
+        self.assertFalse(ray.get(memory.ready.remote()))
+        rollout["version"] = 1
+        ray.get(memory.add.remote(rollout))
+        self.assertTrue(ray.get(memory.ready.remote()))
 
     def test_representative_learners(self):
         from omnirl.algorithms.ddpg import Learner as DDPGLearner

@@ -28,6 +28,7 @@ class Runner:
         num_learners: Number of learner actors.
         num_samplers: Number of sampler actors.
         num_envs_per_sampler: Number of environments sharing each sampler policy.
+        collection_fragment_length: Steps collected per environment per transfer.
         num_evaluators: Number of evaluator actors.
         num_episodes: Number of evaluation episodes per evaluator.
         max_updates: Maximum number of learner updates.
@@ -53,6 +54,7 @@ class Runner:
         num_learners: int = 1,
         num_samplers: int = 1,
         num_envs_per_sampler: int = 1,
+        collection_fragment_length: int = 1,
         num_evaluators: int = 1,
         num_episodes: int = 10,
         max_updates: int = 10000000,
@@ -95,9 +97,9 @@ class Runner:
         memory_kwargs = dict(agent_config.get("memory") or {})
         policy_kwargs = dict(agent_config.get("policy") or {})
         network_kwargs = dict(agent_config.get("network") or {})
-        unroll_length = memory_kwargs.get("unroll_length", 1)
 
         # Initialize memory
+        memory_kwargs["collection_fragment_length"] = collection_fragment_length
         self.memory = agent.Memory.remote(**state_spec, **memory_kwargs)
         supports_prefetch = ray.get(self.memory.supports_prefetch.remote())
 
@@ -140,8 +142,8 @@ class Runner:
                     action_spec=action_spec,
                     network_kwargs=network_kwargs,
                     policy_kwargs=policy_kwargs,
-                    unroll_length=unroll_length,
                     num_envs_per_sampler=num_envs_per_sampler,
+                    collection_fragment_length=collection_fragment_length,
                     seed=seed,
                 )
             )

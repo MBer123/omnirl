@@ -15,6 +15,7 @@ class ReplayBuffer:
         batch_size: Mini-batch size sampled from the buffer.
         warmup_size: Minimum number of transitions required before training.
         max_size: Maximum number of replay transitions stored in the buffer.
+        collection_fragment_length: Number of steps collected per environment.
     """
 
     def __init__(
@@ -26,6 +27,7 @@ class ReplayBuffer:
         batch_size: int = 64,
         warmup_size: int = 0,
         max_size: int = 1000000,
+        collection_fragment_length: int = 1,
     ):
         self.batch_size = batch_size
         self.warmup_size = warmup_size
