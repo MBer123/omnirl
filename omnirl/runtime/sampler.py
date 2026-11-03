@@ -65,8 +65,11 @@ class Sampler:
 
     def rollout(self, memory, weight_store):
         """Continuously collect environment data and send it to the buffer."""
+        pending_add = None
         while True:
             self._sync_weights(weight_store)
             rollout = self.collection.collect(self.policy, self.unroll_length)
             rollout["version"] = self.version
-            memory.add.remote(rollout)
+            if pending_add is not None:
+                ray.get(pending_add)
+            pending_add = memory.add.remote(rollout)
