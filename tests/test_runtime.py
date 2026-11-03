@@ -101,7 +101,10 @@ class RuntimeTest(unittest.TestCase):
             "next_states": np.ones((1, 3, 4), dtype=np.float32),
             "rewards": np.arange(3, dtype=np.float32).reshape(1, 3),
             "terminals": np.zeros((1, 3), dtype=np.bool_),
-            "policy_data": {"action": np.zeros((1, 3), dtype=np.int64)},
+            "action": np.zeros((1, 3), dtype=np.int64),
+            "extra_data": {
+                "hidden_state": np.array([[[0, 0], [1, -1], [2, -2]]], dtype=np.float32),
+            },
         }
         ray.get(memory.add.remote(rollout))
 
@@ -109,6 +112,11 @@ class RuntimeTest(unittest.TestCase):
         batch = ray.get(memory.get_batch.remote(0, 1))
         self.assertEqual(batch["states"].shape, (2, 4))
         self.assertEqual(batch["actions"].shape, (2,))
+        self.assertNotIn("extra_data", batch)
+        np.testing.assert_array_equal(
+            batch["hidden_state"],
+            np.stack((batch["rewards"], -batch["rewards"]), axis=-1),
+        )
 
         ray.get(memory.on_learn.remote([{}]))
         self.assertTrue(ray.get(memory.ready.remote()))
@@ -129,12 +137,20 @@ class RuntimeTest(unittest.TestCase):
             "next_states": np.ones((1, 3, 4), dtype=np.float32),
             "rewards": np.arange(3, dtype=np.float32).reshape(1, 3),
             "terminals": np.zeros((1, 3), dtype=np.bool_),
-            "policy_data": {"action": np.zeros((1, 3), dtype=np.int64)},
+            "action": np.zeros((1, 3), dtype=np.int64),
+            "extra_data": {
+                "hidden_state": np.array([[[0, 0], [1, -1], [2, -2]]], dtype=np.float32),
+            },
         }
         ray.get(memory.add.remote(rollout))
 
         batch = ray.get(memory.get_batch.remote(0, 1))
         self.assertEqual(batch["weights"].shape, (2,))
+        self.assertNotIn("extra_data", batch)
+        np.testing.assert_array_equal(
+            batch["hidden_state"],
+            np.stack((batch["rewards"], -batch["rewards"]), axis=-1),
+        )
         learn_info = {
             "indices": batch["indices"],
             "td_errors": np.ones(2, dtype=np.float32),
@@ -159,7 +175,8 @@ class RuntimeTest(unittest.TestCase):
             "next_states": np.ones((1, 4, 1), dtype=np.float32),
             "rewards": np.zeros((1, 4), dtype=np.float32),
             "terminals": np.zeros((1, 4), dtype=np.bool_),
-            "policy_data": {"action": np.zeros((1, 4), dtype=np.int64)},
+            "action": np.zeros((1, 4), dtype=np.int64),
+            "extra_data": {},
         }
         ray.get(weighted_memory.add.remote(rollout))
 
@@ -223,7 +240,6 @@ class RuntimeTest(unittest.TestCase):
             "action_dim": 2,
             "unroll_length": 2,
             "max_chunks": 1,
-            "store_log_probs": True,
         }
         memory = RolloutBuffer.remote(**memory_kwargs)
 
@@ -234,9 +250,9 @@ class RuntimeTest(unittest.TestCase):
             "rewards": np.zeros((1, 2), dtype=np.float32),
             "terminals": np.zeros((1, 2), dtype=np.bool_),
             "dones": np.zeros((1, 2), dtype=np.bool_),
-            "policy_data": {
-                "action": np.zeros((1, 2), dtype=np.int64),
-                "log_prob": np.zeros((1, 2), dtype=np.float32),
+            "action": np.zeros((1, 2), dtype=np.int64),
+            "extra_data": {
+                "log_probs": np.zeros((1, 2), dtype=np.float32),
             },
         }
         ray.get(memory.add.remote(rollout))
@@ -245,6 +261,7 @@ class RuntimeTest(unittest.TestCase):
         batch = ray.get(memory.get_batch.remote(0, 1))
         self.assertEqual(batch["states"].shape, (1, 2, 4))
         self.assertEqual(batch["log_probs"].shape, (1, 2))
+        self.assertNotIn("extra_data", batch)
 
     def test_representative_learners(self):
         from omnirl.algorithms.ddpg import Learner as DDPGLearner

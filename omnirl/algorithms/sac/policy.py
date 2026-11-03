@@ -110,4 +110,4 @@ class Policy:
             action = action.cpu().numpy()
             env_action = action
 
-        return {"env_action": env_action, "data": {"action": action}}
+        return {"action": action, "env_action": env_action, "extra_data": {}}

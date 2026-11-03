@@ -91,4 +91,4 @@ class Policy:
                 greedy_action = torch.argmax(q_values, dim=-1).cpu().numpy()
                 action = np.where(random_mask, action, greedy_action)
 
-        return {"env_action": action, "data": {"action": action}}
+        return {"action": action, "env_action": action, "extra_data": {}}

@@ -14,7 +14,6 @@ class RolloutBuffer:
         is_continuous: Whether the action space is continuous.
         unroll_length: Number of transitions contained in each rollout segment.
         max_chunks: Maximum number of rollout chunks stored in the buffer.
-        store_log_probs: Whether to store action log probabilities.
         track_version: Whether to reject stale rollouts and track learner versions.
     """
 
@@ -26,12 +25,10 @@ class RolloutBuffer:
         is_continuous: bool = False,
         unroll_length: int = 32,
         max_chunks: int = 64,
-        store_log_probs: bool = False,
         track_version: bool = True,
     ):
         self.unroll_length = unroll_length
         self.max_chunks = max_chunks
-        self.store_log_probs = store_log_probs
         self.track_version = track_version
 
         self.collected_chunks = 0
@@ -52,8 +49,7 @@ class RolloutBuffer:
         self.next_state_memory = np.zeros((*chunk_shape, *state_dim), dtype=state_dtype)
         self.terminal_memory = np.zeros(chunk_shape, dtype=np.bool_)
         self.done_memory = np.zeros(chunk_shape, dtype=np.bool_)
-        if self.store_log_probs:
-            self.log_prob_memory = np.zeros(chunk_shape, dtype=np.float32)
+        self.extra_data_memory = {}
 
     def add(self, rollout):
         """Store a rollout with leading [num_envs, unroll_length] dimensions."""
@@ -67,15 +63,22 @@ class RolloutBuffer:
         start = self.available_chunks
         end = start + size
 
-        policy_data = rollout["policy_data"]
+        # Initialize extra data storage.
+        extra_data = rollout["extra_data"]
+        if self.collected_chunks == 0:
+            chunk_shape = (self.max_chunks, self.unroll_length)
+            for name, values in extra_data.items():
+                memory = np.empty((*chunk_shape, *values.shape[2:]), dtype=values.dtype)
+                self.extra_data_memory[name] = memory
+
         self.state_memory[start:end] = rollout["states"][:size]
-        self.action_memory[start:end] = policy_data["action"][:size]
+        self.action_memory[start:end] = rollout["action"][:size]
         self.reward_memory[start:end] = rollout["rewards"][:size]
         self.next_state_memory[start:end] = rollout["next_states"][:size]
         self.terminal_memory[start:end] = rollout["terminals"][:size]
         self.done_memory[start:end] = rollout["dones"][:size]
-        if self.store_log_probs:
-            self.log_prob_memory[start:end] = policy_data["log_prob"][:size]
+        for name, values in extra_data.items():
+            self.extra_data_memory[name][start:end] = values[:size]
 
         self.collected_chunks += size
         self.available_chunks = end
@@ -92,6 +95,10 @@ class RolloutBuffer:
         start = rank * chunk_per_worker
         end = self.max_chunks if rank == world_size - 1 else start + chunk_per_worker
 
+        extra_data = {}
+        for name, memory in self.extra_data_memory.items():
+            extra_data[name] = memory[start:end]
+
         batch = {
             "states": self.state_memory[start:end],
             "actions": self.action_memory[start:end],
@@ -99,9 +106,8 @@ class RolloutBuffer:
             "next_states": self.next_state_memory[start:end],
             "terminals": self.terminal_memory[start:end],
             "dones": self.done_memory[start:end],
+            **extra_data,
         }
-        if self.store_log_probs:
-            batch["log_probs"] = self.log_prob_memory[start:end]
         return batch
 
     def on_learn(self, train_infos):

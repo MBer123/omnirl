@@ -39,7 +39,6 @@ class IntegrationTest(unittest.TestCase):
             "memory": {
                 "unroll_length": 2,
                 "max_chunks": 3,
-                "store_log_probs": True,
             },
             "network": {"layer_type": "MLP", "mlp_hidden_dims": [8, 8]},
         }

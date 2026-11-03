@@ -102,7 +102,5 @@ class Policy:
             env_action = action
 
         log_prob = log_prob.cpu().numpy()
-        return {
-            "env_action": env_action,
-            "data": {"action": action, "log_prob": log_prob},
-        }
+        extra_data = {"log_probs": log_prob}
+        return {"action": action, "env_action": env_action, "extra_data": extra_data}

@@ -58,6 +58,7 @@ class PrioritizedReplayBuffer:
         self.next_state_memory = np.zeros((max_size, *state_dim), dtype=state_dtype)
         self.terminal_memory = np.zeros(max_size, dtype=np.bool_)
         self.priority_memory = np.zeros(max_size, dtype=np.float32)
+        self.extra_data_memory = {}
 
     def add(self, rollout):
         """Store a rollout with leading [num_envs, num_steps] dimensions."""
@@ -69,10 +70,17 @@ class PrioritizedReplayBuffer:
         first_size = end - start
         remaining_size = size - first_size
 
+        # Initialize extra data storage.
+        extra_data = rollout["extra_data"]
+        if self.collected_size == 0:
+            for name, values in extra_data.items():
+                memory = np.empty((self.max_size, *values.shape[2:]), dtype=values.dtype)
+                self.extra_data_memory[name] = memory
+
         state_shape = self.state_memory.shape[1:]
         action_shape = self.action_memory.shape[1:]
         states = rollout["states"].reshape(count, *state_shape)[offset:]
-        actions = rollout["policy_data"]["action"].reshape(count, *action_shape)[offset:]
+        actions = rollout["action"].reshape(count, *action_shape)[offset:]
         rewards = rollout["rewards"].reshape(count)[offset:]
         next_states = rollout["next_states"].reshape(count, *state_shape)[offset:]
         terminals = rollout["terminals"].reshape(count)[offset:]
@@ -90,6 +98,11 @@ class PrioritizedReplayBuffer:
         self.next_state_memory[:remaining_size] = next_states[first_size:]
         self.terminal_memory[:remaining_size] = terminals[first_size:]
         self.priority_memory[:remaining_size] = self.max_priority
+        for name, values in extra_data.items():
+            values = values.reshape(count, *values.shape[2:])[offset:]
+            memory = self.extra_data_memory[name]
+            memory[start:end] = values[:first_size]
+            memory[:remaining_size] = values[first_size:]
 
         self.collected_size += count
         self.available_size = min(self.max_size, self.collected_size)
@@ -115,6 +128,10 @@ class PrioritizedReplayBuffer:
         max_weight = (self.available_size * probs.min()) ** (-self.beta)
         weights /= max_weight
 
+        extra_data = {}
+        for name, memory in self.extra_data_memory.items():
+            extra_data[name] = memory[indices]
+
         batch = {
             "states": self.state_memory[indices],
             "actions": self.action_memory[indices],
@@ -123,6 +140,7 @@ class PrioritizedReplayBuffer:
             "terminals": self.terminal_memory[indices],
             "indices": indices,
             "weights": weights.astype(np.float32),
+            **extra_data,
         }
         return batch
 

@@ -37,10 +37,13 @@ class GymnasiumEnvironmentTest(unittest.TestCase):
                         )
                     policy = Mock()
                     policy.sample_action.return_value = {
+                        "action": actions,
                         "env_action": actions + 10,
-                        "data": {
-                            "action": actions,
-                            "log_prob": np.full(num_envs, -0.5, dtype=np.float32),
+                        "extra_data": {
+                            "log_probs": np.full(num_envs, -0.5, dtype=np.float32),
+                            "hidden_state": np.arange(
+                                num_envs * 3, dtype=np.float32
+                            ).reshape(num_envs, 3),
                         },
                     }
                     collection = CollectionLoop(
@@ -66,12 +69,21 @@ class GymnasiumEnvironmentTest(unittest.TestCase):
                         rollout["dones"], np.tile([True, False], (num_envs, 1))
                     )
                     np.testing.assert_array_equal(
-                        rollout["policy_data"]["action"],
+                        rollout["action"],
                         np.stack((actions, actions), axis=1),
                     )
                     np.testing.assert_array_equal(
-                        rollout["policy_data"]["log_prob"],
+                        rollout["extra_data"]["log_probs"],
                         np.full((num_envs, 2), -0.5, dtype=np.float32),
+                    )
+                    np.testing.assert_array_equal(
+                        rollout["extra_data"]["hidden_state"],
+                        np.repeat(
+                            np.arange(num_envs * 3, dtype=np.float32).reshape(
+                                num_envs, 1, 3
+                            ),
+                            2, axis=1,
+                        ),
                     )
                     self.assertEqual(policy.sample_action.call_count, 2)
 

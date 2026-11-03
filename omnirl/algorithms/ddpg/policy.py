@@ -88,4 +88,4 @@ class Policy:
 
         env_action = action * self.action_scale + self.action_bias
         action, env_action = action.cpu().numpy(), env_action.cpu().numpy()
-        return {"env_action": env_action, "data": {"action": action}}
+        return {"action": action, "env_action": env_action, "extra_data": {}}

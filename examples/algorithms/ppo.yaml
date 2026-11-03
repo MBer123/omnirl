@@ -17,7 +17,6 @@ modules:
   memory:
     unroll_length: 32
     max_chunks: 8
-    store_log_probs: true
     track_version: true
 
   network:

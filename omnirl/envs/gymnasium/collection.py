@@ -20,9 +20,9 @@ class CollectionLoop:
 
     def collect(self, policy, num_steps):
         """Return a rollout with leading [num_envs, num_steps] dimensions."""
-        fields = ("states", "rewards", "next_states", "terminals", "dones")
+        fields = ("states", "action", "rewards", "next_states", "terminals", "dones")
         rollouts = [{name: [] for name in fields} for _ in self.envs]
-        rollouts = [{**rollout, "policy_data": {}} for rollout in rollouts]
+        rollouts = [{**rollout, "extra_data": {}} for rollout in rollouts]
 
         for _ in range(num_steps):
             observations = np.stack(self.observations)
@@ -35,13 +35,14 @@ class CollectionLoop:
 
                 rollout = rollouts[i]
                 rollout["states"].append(observations[i])
+                rollout["action"].append(np.array(decision["action"][i], copy=True))
                 rollout["rewards"].append(reward)
                 rollout["next_states"].append(np.array(next_observation, copy=True))
                 rollout["terminals"].append(terminated)
                 rollout["dones"].append(done)
-                for name, values in decision.get("data", {}).items():
+                for name, values in decision["extra_data"].items():
                     value = np.array(values[i], copy=True)
-                    rollout["policy_data"].setdefault(name, []).append(value)
+                    rollout["extra_data"].setdefault(name, []).append(value)
 
                 if done:
                     next_observation, _ = env.reset()
@@ -52,9 +53,9 @@ class CollectionLoop:
             values = [item[name] for item in rollouts]
             rollout[name] = np.asarray(values)
 
-        policy_data = {}
-        for name in rollouts[0]["policy_data"]:
-            values = [item["policy_data"][name] for item in rollouts]
-            policy_data[name] = np.asarray(values)
-        rollout["policy_data"] = policy_data
+        extra_data = {}
+        for name in rollouts[0]["extra_data"]:
+            values = [item["extra_data"][name] for item in rollouts]
+            extra_data[name] = np.asarray(values)
+        rollout["extra_data"] = extra_data
         return rollout
