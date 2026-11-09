@@ -32,6 +32,7 @@ class ReplayBuffer:
         self.batch_size = batch_size
         self.warmup_size = warmup_size
         self.max_size = max_size
+        self.rng = np.random.default_rng()
 
         self.collected_size = 0
         self.available_size = 0
@@ -104,7 +105,7 @@ class ReplayBuffer:
         end = self.batch_size if rank == world_size - 1 else start + batch_per_worker
         size = end - start
 
-        indices = np.random.choice(self.available_size, size=size, replace=False)
+        indices = self.rng.choice(self.available_size, size=size, replace=False)
 
         extra_data = {}
         for name, memory in self.extra_data_memory.items():
