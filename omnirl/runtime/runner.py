@@ -69,14 +69,12 @@ class Runner:
         evaluator_seed: int | None = None,
     ):
         # Initialize ray
-        try:
+        if not ray.is_initialized():
             runtime_env = {
                 "working_dir": ".",
                 "excludes": ["**/*.ckpt", "**/*.csv", "**/*.pth"],
             }
-            ray.init(address="auto", runtime_env=runtime_env)
-        except ConnectionError:
-            ray.init()
+            ray.init(runtime_env=runtime_env)
 
         # Initialize logging and checkpoint utilities
         self.log = setup_logger()
