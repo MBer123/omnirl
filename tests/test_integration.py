@@ -3,8 +3,9 @@ import unittest
 
 import ray
 
-from omnirl.algorithms import dqn, ppo
+from omnirl.algorithms.off_policy import dqn
 from omnirl.envs import gymnasium
+from omnirl.algorithms.on_policy import ppo
 from omnirl.runtime.runner import Runner
 
 

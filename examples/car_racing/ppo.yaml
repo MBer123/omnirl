@@ -1,5 +1,5 @@
 agent:
-  module: omnirl.algorithms.ppo
+  module: omnirl.algorithms.on_policy.ppo
 
 modules:
   learner:

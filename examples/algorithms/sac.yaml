@@ -1,5 +1,5 @@
 agent:
-  module: omnirl.algorithms.sac
+  module: omnirl.algorithms.off_policy.sac
 
 modules:
   learner:

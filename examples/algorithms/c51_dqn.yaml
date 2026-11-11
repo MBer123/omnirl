@@ -1,5 +1,5 @@
 agent:
-  module: omnirl.algorithms.c51_dqn
+  module: omnirl.algorithms.off_policy.c51_dqn
 
 modules:
   learner:

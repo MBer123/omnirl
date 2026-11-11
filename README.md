@@ -156,7 +156,7 @@ When a backend supports interactive rendering, set `env.render_mode` to `human` 
 
 ## Adding an Algorithm
 
-Create a package under `omnirl/algorithms/<name>/` that exports the shared runtime interface:
+Create a package under `omnirl/algorithms/on_policy/<name>/` or `omnirl/algorithms/off_policy/<name>/` that exports the shared runtime interface:
 
 ```python
 from .learner import Learner
@@ -168,11 +168,11 @@ __all__ = ["Learner", "Memory", "Policy"]
 
 The implementation should provide:
 
-- `Learner`: a Ray actor that implements learning, checkpointing, and versioned weight access. Existing learners can be used as interface examples.
-- `Policy`: a local inference class with deterministic `choose_action(observation)` for a single observation and exploratory `sample_action(observations)` for a batch. Sampling inputs and outputs must retain the leading batch dimension, including when the batch size is 1.
+- `Learner`: a class inheriting `BaseLearner` from `omnirl.algorithms.base`, wrapped as a Ray actor, that implements learning, checkpointing, and versioned weight access. Existing learners can be used as interface examples.
+- `Policy`: a local inference class inheriting `BasePolicy` from `omnirl.algorithms.base`, with deterministic `choose_action(observation)` for a single observation and exploratory `sample_action(observations)` for a batch. Sampling inputs and outputs must retain the leading batch dimension, including when the batch size is 1.
 - `Memory`: one of the buffers in `omnirl.buffers`, or a compatible new Ray actor.
 - Network definitions under `omnirl.networks` when the algorithm needs a new architecture.
-- An agent YAML whose `agent.module` points to `omnirl.algorithms.<name>` and whose `modules` section supplies the constructor parameters.
+- An agent YAML whose `agent.module` points to `omnirl.algorithms.on_policy.<name>` or `omnirl.algorithms.off_policy.<name>` and whose `modules` section supplies the constructor parameters.
 
 The environment backend and distributed runtime do not need to be changed. Add module-interface and learner-update tests before adding the algorithm to the table above.
 

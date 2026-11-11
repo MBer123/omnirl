@@ -156,7 +156,7 @@ python run.py --mode test --runner-config examples/cartpole/test.yaml --agent-co
 
 ## 添加算法
 
-在 `omnirl/algorithms/<name>/` 下创建算法包，并导出统一的运行时接口：
+在 `omnirl/algorithms/on_policy/<name>/` 或 `omnirl/algorithms/off_policy/<name>/` 下创建算法包，并导出统一的运行时接口：
 
 ```python
 from .learner import Learner
@@ -168,11 +168,11 @@ __all__ = ["Learner", "Memory", "Policy"]
 
 算法模块需要提供：
 
-- `Learner`：负责参数更新、检查点保存和带版本权重访问的 Ray Actor，可参考现有实现的接口。
-- `Policy`：提供确定性 `choose_action(observation)` 和探索性 `sample_action(observations)` 方法的本地推理类。前者接收单个观测，后者接收批量观测；采样输入和输出必须保留首维 batch 维度，即使 batch 大小为 1。
+- `Learner`：继承 `omnirl.algorithms.base` 中的 `BaseLearner`，并包装为 Ray Actor，负责参数更新、检查点保存和带版本权重访问，可参考现有实现的接口。
+- `Policy`：继承 `omnirl.algorithms.base` 中的 `BasePolicy`，提供确定性 `choose_action(observation)` 和探索性 `sample_action(observations)` 方法的本地推理类。前者接收单个观测，后者接收批量观测；采样输入和输出必须保留首维 batch 维度，即使 batch 大小为 1。
 - `Memory`：`omnirl.buffers` 中的一种 Buffer，或符合相同接口的新 Ray Actor。
 - 如果算法需要新的网络架构，请在 `omnirl.networks` 下定义网络。
-- 一份 Agent YAML 配置，其中 `agent.module` 指向 `omnirl.algorithms.<name>`，`modules` 部分提供各组件的构造参数。
+- 一份 Agent YAML 配置，其中 `agent.module` 指向 `omnirl.algorithms.on_policy.<name>` 或 `omnirl.algorithms.off_policy.<name>`，`modules` 部分提供各组件的构造参数。
 
 无需修改环境模块和分布式运行时。将新算法加入上表前，请添加模块接口测试和学习器更新测试。
 

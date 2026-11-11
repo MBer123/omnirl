@@ -1,5 +1,5 @@
 agent:
-  module: omnirl.algorithms.ddpg
+  module: omnirl.algorithms.off_policy.ddpg
 
 modules:
   learner:

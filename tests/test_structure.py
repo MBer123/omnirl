@@ -8,21 +8,21 @@ import yaml
 
 from omnirl.runtime.runner import Runner
 
-ALGORITHMS = [
-    "a2c",
-    "ddpg",
-    "impala",
-    "ppo",
-    "sac",
-    "td3",
-    "tqc",
-    "c51_dqn",
-    "ddqn",
-    "dqn",
-    "dueling_dqn",
-    "per_dqn",
-    "qr_dqn",
-]
+ALGORITHMS = {
+    "a2c": "omnirl.algorithms.on_policy.a2c",
+    "ddpg": "omnirl.algorithms.off_policy.ddpg",
+    "impala": "omnirl.algorithms.off_policy.impala",
+    "ppo": "omnirl.algorithms.on_policy.ppo",
+    "sac": "omnirl.algorithms.off_policy.sac",
+    "td3": "omnirl.algorithms.off_policy.td3",
+    "tqc": "omnirl.algorithms.off_policy.tqc",
+    "c51_dqn": "omnirl.algorithms.off_policy.c51_dqn",
+    "ddqn": "omnirl.algorithms.off_policy.ddqn",
+    "dqn": "omnirl.algorithms.off_policy.dqn",
+    "dueling_dqn": "omnirl.algorithms.off_policy.dueling_dqn",
+    "per_dqn": "omnirl.algorithms.off_policy.per_dqn",
+    "qr_dqn": "omnirl.algorithms.off_policy.qr_dqn",
+}
 
 CONFIG_ROOT = Path("examples")
 
@@ -31,7 +31,7 @@ class StructureTest(unittest.TestCase):
     def test_algorithm_exports(self):
         for name in ALGORITHMS:
             with self.subTest(algorithm=name):
-                module = importlib.import_module(f"omnirl.algorithms.{name}")
+                module = importlib.import_module(ALGORITHMS[name])
                 for component in ["Learner", "Memory", "Policy"]:
                     self.assertTrue(hasattr(module, component))
                 self.assertTrue(callable(module.Policy.set_weights))
@@ -45,7 +45,7 @@ class StructureTest(unittest.TestCase):
             with self.subTest(algorithm=path.stem):
                 config = yaml.safe_load(path.read_text(encoding="utf-8"))
                 self.assertEqual(
-                    config["agent"]["module"], f"omnirl.algorithms.{path.stem}"
+                    config["agent"]["module"], ALGORITHMS[path.stem]
                 )
 
     def test_ppo_environment_examples(self):
@@ -66,7 +66,7 @@ class StructureTest(unittest.TestCase):
                 evaluation = yaml.safe_load(
                     (example_dir / "test.yaml").read_text(encoding="utf-8")
                 )
-                self.assertEqual(agent["agent"]["module"], "omnirl.algorithms.ppo")
+                self.assertEqual(agent["agent"]["module"], ALGORITHMS["ppo"])
                 self.assertGreaterEqual(
                     agent["modules"]["memory"]["batch_size"],
                     train["runner"]["collection_fragment_length"],

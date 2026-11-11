@@ -1,5 +1,5 @@
 agent:
-  module: omnirl.algorithms.a2c
+  module: omnirl.algorithms.on_policy.a2c
 
 modules:
   learner:

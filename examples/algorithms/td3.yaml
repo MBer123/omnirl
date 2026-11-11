@@ -1,5 +1,5 @@
 agent:
-  module: omnirl.algorithms.td3
+  module: omnirl.algorithms.off_policy.td3
 
 modules:
   learner:

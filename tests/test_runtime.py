@@ -216,7 +216,7 @@ class RuntimeTest(unittest.TestCase):
         self.assertAlmostEqual(memory.priority_memory[1], 3.0 + 1e-6)
 
     def test_tqc_quantile_huber_loss_reduction(self):
-        from omnirl.algorithms.tqc import Learner as TQCLearner
+        from omnirl.algorithms.off_policy.tqc import Learner as TQCLearner
 
         learner_class = TQCLearner.__ray_metadata__.modified_class
         learner = learner_class.__new__(learner_class)
@@ -283,13 +283,13 @@ class RuntimeTest(unittest.TestCase):
         self.assertTrue(ray.get(memory.ready.remote()))
 
     def test_representative_learners(self):
-        from omnirl.algorithms.ddpg import Learner as DDPGLearner
-        from omnirl.algorithms.dqn import Learner as DQNLearner
-        from omnirl.algorithms.impala import Learner as ImpalaLearner
-        from omnirl.algorithms.ppo import Learner as PPOLearner
-        from omnirl.algorithms.sac import Learner as SACLearner
-        from omnirl.algorithms.td3 import Learner as TD3Learner
-        from omnirl.algorithms.tqc import Learner as TQCLearner
+        from omnirl.algorithms.off_policy.ddpg import Learner as DDPGLearner
+        from omnirl.algorithms.off_policy.dqn import Learner as DQNLearner
+        from omnirl.algorithms.off_policy.impala import Learner as ImpalaLearner
+        from omnirl.algorithms.on_policy.ppo import Learner as PPOLearner
+        from omnirl.algorithms.off_policy.sac import Learner as SACLearner
+        from omnirl.algorithms.off_policy.td3 import Learner as TD3Learner
+        from omnirl.algorithms.off_policy.tqc import Learner as TQCLearner
 
         replay_batch = {
             "states": np.random.randn(8, 4).astype(np.float32),

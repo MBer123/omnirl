@@ -1,5 +1,5 @@
 agent:
-  module: omnirl.algorithms.dueling_dqn
+  module: omnirl.algorithms.off_policy.dueling_dqn
 
 modules:
   learner:
