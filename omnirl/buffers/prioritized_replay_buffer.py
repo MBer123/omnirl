@@ -174,6 +174,14 @@ class PrioritizedReplayBuffer:
         warmup_ok = self.collected_size >= self.warmup_size
         return batch_ok and warmup_ok
 
+    def needs_backpressure(self):
+        """Return False because new samples can overwrite old replay data."""
+        return False
+
+    def can_sample(self, version):
+        """Allow collection regardless of replay occupancy or policy version."""
+        return True
+
     def supports_prefetch(self):
         """Return True because batches can be sampled before the last update."""
         return True

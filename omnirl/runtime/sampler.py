@@ -1,3 +1,5 @@
+import time
+
 import ray
 import torch
 
@@ -63,11 +65,23 @@ class Sampler:
             self.version = result["version"]
             self.policy.set_weights(weights, self.version)
 
+    def _can_collect(self, memory):
+        """Check dynamic admission only for buffers that need backpressure."""
+        if not self.needs_backpressure:
+            return True
+        return ray.get(memory.can_sample.remote(self.version))
+
     def rollout(self, memory, weight_store):
         """Continuously collect environment data and send it to the buffer."""
         pending_add = None
+        self.needs_backpressure = ray.get(memory.needs_backpressure.remote())
+
         while True:
             self._sync_weights(weight_store)
+            if not self._can_collect(memory):
+                time.sleep(0.001)
+                continue
+
             rollout = self.collection.collect(self.policy, self.fragment_length)
             rollout["version"] = self.version
             if pending_add is not None:

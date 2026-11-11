@@ -120,6 +120,14 @@ class RolloutBuffer:
         """Return True if the buffer has enough samples to start training."""
         return self.is_ready
 
+    def needs_backpressure(self):
+        """Return True because collection must wait for capacity and policy versions."""
+        return True
+
+    def can_sample(self, version):
+        """Allow another fragment when space and the policy version permit it."""
+        return not self.is_ready and (not self.track_version or version >= self.version)
+
     def supports_prefetch(self):
         """Return False because batches must be collected after the last update."""
         return False
