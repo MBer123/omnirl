@@ -1,9 +1,9 @@
 import numpy as np
-import ray
+
+from .base.buffer import BaseBuffer
 
 
-@ray.remote(num_cpus=1)
-class RolloutBuffer:
+class RolloutBuffer(BaseBuffer):
     """
     Rollout buffer for experience store.
 
