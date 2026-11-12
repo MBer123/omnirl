@@ -16,6 +16,7 @@ class ReplayBuffer(BaseBuffer):
         warmup_size: Minimum number of transitions required before training.
         max_size: Maximum number of replay transitions stored in the buffer.
         collection_fragment_length: Number of steps collected per environment.
+        replay_ratio: Number of training rows per new transition.
     """
 
     def __init__(
@@ -28,7 +29,9 @@ class ReplayBuffer(BaseBuffer):
         warmup_size: int = 0,
         max_size: int = 1000000,
         collection_fragment_length: int = 1,
+        replay_ratio: float | None = None,
     ):
+        self.replay_ratio = replay_ratio
         self.batch_size = batch_size
         self.warmup_size = warmup_size
         self.max_size = max_size
@@ -132,22 +135,29 @@ class ReplayBuffer(BaseBuffer):
         self.replayed_size += self.batch_size
 
     def ready(self):
-        """Return True if the buffer has enough samples to start training."""
+        """Require both stored samples and credit for one whole global batch."""
         batch_ok = self.available_size >= self.batch_size
         warmup_ok = self.collected_size >= self.warmup_size
-        return batch_ok and warmup_ok
+
+        prefill_size = max(self.batch_size, self.warmup_size)
+        new_samples = max(0, self.collected_size - prefill_size)
+        budget_ok = True
+        if self.replay_ratio is not None:
+            replay_budget = self.replay_ratio * new_samples
+            budget_ok = self.replayed_size + self.batch_size <= replay_budget
+        return batch_ok and warmup_ok and budget_ok
 
     def needs_backpressure(self):
-        """Return False because new samples can overwrite old replay data."""
-        return False
+        """Enable the sampler's existing admission check only for rate control."""
+        return self.replay_ratio is not None
 
     def can_sample(self, version):
-        """Allow collection regardless of replay occupancy or policy version."""
-        return True
+        """Collect until there is enough credit to train another whole batch."""
+        return self.replay_ratio is None or not self.ready()
 
     def supports_prefetch(self):
-        """Return True because batches can be sampled before the last update."""
-        return True
+        """Rate control uses one in-flight update so credit cannot be overspent."""
+        return self.replay_ratio is None
 
     def stats(self):
         """Return statistics describing the current state of the replay buffer."""
@@ -173,6 +183,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         warmup_size: Minimum number of transitions required before training.
         max_size: Maximum number of replay transitions stored in the buffer.
         collection_fragment_length: Number of steps collected per environment.
+        replay_ratio: Number of training rows per new transition.
     """
 
     def __init__(
@@ -188,6 +199,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         warmup_size: int = 0,
         max_size: int = 1000000,
         collection_fragment_length: int = 1,
+        replay_ratio: float | None = None,
     ):
         super().__init__(
             state_dim=state_dim,
@@ -198,6 +210,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             warmup_size=warmup_size,
             max_size=max_size,
             collection_fragment_length=collection_fragment_length,
+            replay_ratio=replay_ratio,
         )
 
         self.alpha = alpha
