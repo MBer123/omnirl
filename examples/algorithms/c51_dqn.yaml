@@ -15,6 +15,7 @@ modules:
     batch_size: 64
     warmup_size: 1000
     max_size: 100000
+    replay_ratio: 32
 
   policy:
     epsilon_start: 1

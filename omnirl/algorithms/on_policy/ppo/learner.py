@@ -36,6 +36,7 @@ class Learner(BaseLearner):
         actor_lr: Learning rate for the actor optimizer.
         critic_lr: Learning rate for the critic optimizer.
         max_grad_norm: Maximum gradient norm used for gradient clipping.
+        target_kl: KL threshold for early stopping, or None to disable.
         device: Torch device to run the networks on.
         seed: Random seed used to ensure consistent results across runs.
         rank: Distributed learner rank.
@@ -61,6 +62,7 @@ class Learner(BaseLearner):
         actor_lr: float = 0.0003,
         critic_lr: float = 0.0003,
         max_grad_norm: float = 0.5,
+        target_kl: float | None = None,
         device: str | None = None,
         seed: int | None = None,
         rank: int = 0,
@@ -109,6 +111,7 @@ class Learner(BaseLearner):
         self.vf_coef = vf_coef
         self.is_continuous = is_continuous
         self.max_grad_norm = max_grad_norm
+        self.target_kl = target_kl
 
         # Initialize actor and critic networks
         self.version = 0
@@ -190,6 +193,20 @@ class Learner(BaseLearner):
             "dist_entropy": dist_entropy.view(-1),
             "state_values": state_values.view(-1),
         }
+
+    @torch.no_grad()
+    def _compute_kl(self, states_tensor, actions_tensor, old_log_probs):
+        """Estimate full-batch KL with sample-weighted averaging across ranks."""
+        results = self._evaluate_action(states_tensor, actions_tensor)
+        log_ratio = results["log_probs"] - old_log_probs
+        kl_sum = (log_ratio.exp() - 1 - log_ratio).sum()
+        count = log_ratio.new_tensor(log_ratio.numel())
+        stats = torch.stack((kl_sum, count))
+
+        if torch_dist.is_initialized():
+            torch_dist.all_reduce(stats)
+
+        return (stats[0] / stats[1]).item()
 
     def learn(self, batch):
         """Sample a batch from rollout buffer and update actor and critic networks."""
@@ -336,6 +353,11 @@ class Learner(BaseLearner):
                 total_approx_kl += approx_kl.item()
                 total_clip_frac += clip_frac.item()
                 num_updates += 1
+
+            if self.target_kl is not None:
+                kl = self._compute_kl(flat_states, flat_actions, flat_old_log_probs)
+                if kl > self.target_kl:
+                    break
 
         # Update model version
         self.version += 1

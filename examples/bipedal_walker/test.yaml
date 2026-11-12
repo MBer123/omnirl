@@ -13,6 +13,4 @@ device:
   learner: cpu
 
 seed:
-  learner: 0
-  sampler: 0
   evaluator: 0
