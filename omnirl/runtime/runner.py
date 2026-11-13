@@ -7,9 +7,10 @@ import threading
 
 import ray
 
+from omnirl.utils.file_writer import FileWriter
+from omnirl.utils.logger import setup_logger
+
 from .evaluator import Evaluator
-from .file_writer import FileWriter
-from .logger import setup_logger
 from .sampler import Sampler
 from .weight_store import WeightStore
 
