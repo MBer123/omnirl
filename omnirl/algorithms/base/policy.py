@@ -16,9 +16,5 @@ class BasePolicy(ABC):
 
     @abstractmethod
     def sample_action(self, observations) -> dict:
-        """Return action, env_action and extra_data for a batch of observations.
-
-        Actions and extra data retain their leading batch dimension, even when
-        the batch contains only one observation.
-        """
+        """Return action, env_action and extra_data for a batch of observations."""
         raise NotImplementedError
