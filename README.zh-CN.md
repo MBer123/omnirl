@@ -178,17 +178,22 @@ __all__ = ["Learner", "Memory", "Policy"]
 
 ## 添加环境模块
 
-在 `omnirl/envs/<name>/` 下创建一个包，并导出：
+在 `omnirl/envs/<name>/` 下创建环境包，并导出统一接口：
 
 ```python
-build_env
-get_env_spec
-CollectionLoop
-EvaluationLoop
-aggregate_evaluations
+from .backend import EnvAdapter, EnvProvider
+from .collection import CollectionLoop
+from .evaluation import EvaluationLoop
+
+__all__ = ["EnvAdapter", "EnvProvider", "CollectionLoop", "EvaluationLoop"]
 ```
 
-`get_env_spec` 用于描述观测的形状与数据类型、动作的维度与边界以及默认评估指标。`CollectionLoop` 将策略输出转换为 Rollout 数据；`EvaluationLoop` 和 `aggregate_evaluations` 负责生成并聚合环境特定的评估指标。
+环境模块需要提供：
+
+- `EnvAdapter`：继承 `omnirl.envs.base` 中的 `BaseEnv`，封装具体环境。`reset()` 重置环境，`step()` 执行动作，`render()` 渲染画面，`close()` 关闭环境。
+- `EnvProvider`：继承 `BaseEnvProvider`，`build(env_config, role=None)` 根据配置创建环境，`get_spec(env_config)` 返回观测维度、动作范围等信息。
+- `CollectionLoop`：继承 `BaseCollectionLoop`，通过 `run(policy, num_steps)` 在每个环境中采样指定步数，并返回训练数据。
+- `EvaluationLoop`：继承 `BaseEvaluationLoop`，通过 `run(policy, num_episodes)` 评估策略，通过 `aggregate(eval_infos)` 汇总各评估进程的结果。`default_metrics` 保存各项评估指标的初始值。
 
 在 Runner 配置中指定环境模块：
 

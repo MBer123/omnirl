@@ -178,17 +178,22 @@ The environment backend and distributed runtime do not need to be changed. Add m
 
 ## Adding an Environment Backend
 
-Create a package under `omnirl/envs/<name>/` that exports:
+Create a package under `omnirl/envs/<name>/` that exports the shared runtime interface:
 
 ```python
-build_env
-get_env_spec
-CollectionLoop
-EvaluationLoop
-aggregate_evaluations
+from .backend import EnvAdapter, EnvProvider
+from .collection import CollectionLoop
+from .evaluation import EvaluationLoop
+
+__all__ = ["EnvAdapter", "EnvProvider", "CollectionLoop", "EvaluationLoop"]
 ```
 
-`get_env_spec` describes observation shape and dtype, action dimensions and bounds, and default evaluation metrics. `CollectionLoop` turns policy decisions into rollout data, while `EvaluationLoop` and `aggregate_evaluations` produce environment-specific metrics.
+The environment backend should provide:
+
+- `EnvAdapter`: inherits `BaseEnv` from `omnirl.envs.base` to wrap an environment. `reset()` resets the environment, `step()` executes an action, `render()` renders the environment, and `close()` releases resources.
+- `EnvProvider`: inherits `BaseEnvProvider`. `build(env_config, role=None)` creates an environment from configuration; `get_spec(env_config)` provides observation dimensions, action bounds, and related details.
+- `CollectionLoop`: inherits `BaseCollectionLoop`. `run(policy, num_steps)` collects the requested steps per environment and returns training data.
+- `EvaluationLoop`: inherits `BaseEvaluationLoop`. `run(policy, num_episodes)` evaluates the requested episodes; `aggregate(eval_infos)` combines evaluator results. The `default_metrics` class attribute stores initial metric values.
 
 Set the backend module in a runner configuration:
 

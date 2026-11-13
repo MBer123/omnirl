@@ -82,7 +82,7 @@ class Sampler:
                 time.sleep(0.001)
                 continue
 
-            rollout = self.collection.collect(self.policy, self.fragment_length)
+            rollout = self.collection.run(self.policy, self.fragment_length)
             rollout["version"] = self.version
             if pending_add is not None:
                 ray.get(pending_add)

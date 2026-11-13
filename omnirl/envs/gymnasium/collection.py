@@ -1,7 +1,9 @@
 import numpy as np
 
+from omnirl.envs.base import BaseCollectionLoop
 
-class CollectionLoop:
+
+class CollectionLoop(BaseCollectionLoop):
     """
     Collect transitions using the Gymnasium interaction protocol.
 
@@ -15,10 +17,10 @@ class CollectionLoop:
         self.envs = [env_builder() for _ in range(num_envs)]
         self.observations = []
         for i, env in enumerate(self.envs):
-            obs = env.reset(seed=None if seed is None else seed + i)[0]
+            obs, _ = env.reset(seed=None if seed is None else seed + i)
             self.observations.append(np.array(obs, copy=True))
 
-    def collect(self, policy, num_steps):
+    def run(self, policy, num_steps):
         """Return a rollout with leading [num_envs, num_steps] dimensions."""
         fields = ("states", "action", "rewards", "next_states", "terminals", "dones")
         rollouts = [{name: [] for name in fields} for _ in self.envs]

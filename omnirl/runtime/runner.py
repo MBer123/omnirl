@@ -84,11 +84,12 @@ class Runner:
 
         # Read the environment description through the backend interface
         env_config = dict(env_config)
-        env_meta = environment.get_env_spec(env_config)
+        env_provider = environment.EnvProvider
+        env_meta = env_provider.get_spec(env_config)
         env_spec = env_meta["env_spec"]
         state_spec = env_meta["state_spec"]
         action_spec = env_meta["action_spec"]
-        eval_metrics = env_meta["eval_metrics"]
+        eval_metrics = environment.EvaluationLoop.default_metrics
 
         # Load agent module arguments from config
         learner_kwargs = dict(agent_config.get("learner") or {})
@@ -128,7 +129,7 @@ class Runner:
         # Initialize samplers
         self.samplers = []
         role = "collection"
-        env_builder = partial(environment.build_env, env_config=env_config, role=role)
+        env_builder = partial(env_provider.build, env_config=env_config, role=role)
         for i in range(num_samplers):
             offset = 1000 + i * num_envs_per_sampler
             seed = None if sampler_seed is None else sampler_seed + offset
@@ -149,7 +150,7 @@ class Runner:
         # Initialize evaluators
         self.evaluators = []
         role = "evaluation"
-        env_builder = partial(environment.build_env, env_config=env_config, role=role)
+        env_builder = partial(env_provider.build, env_config=env_config, role=role)
         for i in range(num_evaluators):
             offset = 2000 + i
             seed = None if evaluator_seed is None else evaluator_seed + offset
@@ -193,7 +194,7 @@ class Runner:
         self.next_log_time = float("inf")
         self.next_save_time = float("inf")
         self.stop_event = threading.Event()
-        self.aggregate_evaluations = environment.aggregate_evaluations
+        self.aggregate_evaluations = environment.EvaluationLoop.aggregate
 
         # Initialize throughput counters
         self.last_collected_data = 0
@@ -299,7 +300,7 @@ class Runner:
                 eval_refs.append(evaluator.evaluate.remote(weights, version))
             eval_infos = ray.get(eval_refs)
 
-            avg_info = self.aggregate_evaluations(eval_infos, version)
+            avg_info = {"version": version, **self.aggregate_evaluations(eval_infos)}
 
             self.latest_eval_info = avg_info
             self.eval_version = version

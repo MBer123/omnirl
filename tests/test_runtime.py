@@ -7,7 +7,7 @@ import ray
 import torch
 
 from omnirl.buffers import PrioritizedReplayBuffer, ReplayBuffer, RolloutBuffer
-from omnirl.envs.gymnasium import aggregate_evaluations
+from omnirl.envs.gymnasium import EvaluationLoop
 from omnirl.runtime.runner import Runner
 from omnirl.runtime.weight_store import WeightStore
 
@@ -74,7 +74,7 @@ class RuntimeTest(unittest.TestCase):
         first_evaluator = MetricEvaluator.remote(first_metrics, 2)
         second_evaluator = MetricEvaluator.remote(second_metrics, 1)
         runner.evaluators = [first_evaluator, second_evaluator]
-        runner.aggregate_evaluations = aggregate_evaluations
+        runner.aggregate_evaluations = EvaluationLoop.aggregate
 
         result = runner._start_evaluators(is_train=False)
 
