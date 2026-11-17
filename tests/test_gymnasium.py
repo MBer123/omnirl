@@ -174,8 +174,8 @@ class GymnasiumEnvironmentTest(unittest.TestCase):
                 policy.choose_action.return_value = 0
                 evaluation = EvaluationLoop(env_builder=lambda: env, seed=10)
 
-                first = evaluation.run(policy, num_episodes=2)
-                second = evaluation.run(policy, num_episodes=1)
+                first = evaluation.run(policy, num_episodes_per_evaluator=2)
+                second = evaluation.run(policy, num_episodes_per_evaluator=1)
 
                 expected_first = {
                     "num_episodes": 2,

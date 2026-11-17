@@ -6,14 +6,12 @@ env:
 runner:
   ckpt_dir: checkpoints/bipedal_walker
   eval_model: agent_100.pth
-  num_samplers: 0
-  num_evaluators: 1
-  num_episodes: 10
 
-device:
-  evaluator:
-    num_evaluator_gpus: 0
-    num_evaluators_per_gpu: 1
+evaluator:
+  num_evaluators: 1
+  num_episodes_per_evaluator: 10
+  num_evaluator_gpus: 0
+  num_evaluators_per_gpu: 1
 
 seed:
   evaluator: 0

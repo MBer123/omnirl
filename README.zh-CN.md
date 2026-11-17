@@ -152,9 +152,9 @@ python run.py --mode test --runner-config examples/cartpole/test.yaml --agent-co
 
 示例默认加载 `agent_100.pth`；调整训练更新次数后，请同步修改 `runner.eval_model`。
 
-评估指标由所选环境模块定义。总评估回合数为 `runner.num_evaluators * runner.num_episodes`。
+评估指标由所选环境模块定义。总评估回合数为 `evaluator.num_evaluators * evaluator.num_episodes_per_evaluator`。
 
-当环境模块支持交互式渲染时，请在测试配置中将 `env.render_mode` 设置为 `human`，并将 `runner.num_evaluators` 设置为 `1`。
+当环境模块支持交互式渲染时，请在测试配置中将 `env.render_mode` 设置为 `human`，并将 `evaluator.num_evaluators` 设置为 `1`。
 
 ## 添加算法
 
@@ -195,7 +195,7 @@ __all__ = ["EnvAdapter", "EnvProvider", "CollectionLoop", "EvaluationLoop"]
 - `EnvAdapter`：继承 `omnirl.envs.base` 中的 `BaseEnv`，封装具体环境。`reset()` 重置环境，`step()` 执行动作，`render()` 渲染画面，`close()` 关闭环境。
 - `EnvProvider`：继承 `BaseEnvProvider`，`build(env_config, role=None)` 根据配置创建环境，`get_spec(env_config)` 返回观测维度、动作范围等信息。
 - `CollectionLoop`：继承 `BaseCollectionLoop`，通过 `run(policy, num_steps)` 在每个环境中采样指定步数，并返回训练数据。
-- `EvaluationLoop`：继承 `BaseEvaluationLoop`，通过 `run(policy, num_episodes)` 评估策略，通过 `aggregate(eval_infos)` 汇总各评估进程的结果。`default_metrics` 保存各项评估指标的初始值。
+- `EvaluationLoop`：继承 `BaseEvaluationLoop`，通过 `run(policy, num_episodes_per_evaluator)` 评估策略，通过 `aggregate(eval_infos)` 汇总各评估进程的结果。`default_metrics` 保存各项评估指标的初始值。
 
 在 Runner 配置中指定环境模块：
 
@@ -212,11 +212,11 @@ env:
 
 ## 注意事项
 
-- `device.learner` 支持 `cpu`和 `gpu`。多个 CPU learner 使用 Gloo DDP；每个 GPU learner 需要一张 GPU。
-- 在 `device.sampler` 中，通过 `num_sampler_gpus` 和 `num_samplers_per_gpu` 设置 GPU 数量及每卡进程数。
-- 在 `device.evaluator` 中，通过 `num_evaluator_gpus` 和 `num_evaluators_per_gpu` 设置 GPU 数量及每卡进程数。
+- `learner.device` 支持 `cpu`和 `gpu`。多个 CPU learner 使用 Gloo DDP；每个 GPU learner 需要一张 GPU。
+- 在 `sampler` 中，通过 `num_sampler_gpus` 和 `num_samplers_per_gpu` 设置 GPU 数量及每卡进程数。
+- 在 `evaluator` 中，通过 `num_evaluator_gpus` 和 `num_evaluators_per_gpu` 设置 GPU 数量及每卡进程数。
 - sampler/evaluator 的 GPU 数量默认为零；超出配置容量的进程使用 CPU，GPU 数量为零时全部使用 CPU。
-- 根据可用硬件调整 `runner.num_samplers`、`runner.num_evaluators` 和 `runner.num_learners`。初次配置时，建议将三者总数控制在可用 CPU 线程数的 90% 以下。
+- 根据可用硬件调整 `sampler.num_samplers`、`evaluator.num_evaluators` 和 `learner.num_learners`。
 - 使用 `python -m unittest discover -s tests -v` 运行测试套件。
 - OmniRL 面向强化学习研究。基于多个随机种子的算法验证和扩展性结果仅代表当前实验条件，不构成生产级保证。
 

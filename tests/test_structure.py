@@ -66,7 +66,7 @@ class StructureTest(unittest.TestCase):
                 evaluation_runner = evaluation["runner"]
                 self.assertEqual(agent["agent"]["module"], ALGORITHMS["ppo"])
                 batch_size = modules["memory"]["batch_size"]
-                fragment_length = train_runner["collection_fragment_length"]
+                fragment_length = train["sampler"]["collection_fragment_length"]
                 self.assertGreaterEqual(batch_size, fragment_length)
                 for component in ("actor", "critic"):
                     network = modules["network"][component]
@@ -128,15 +128,20 @@ class StructureTest(unittest.TestCase):
                         params = set(inspect.signature(component.__init__).parameters)
                         self.assertLessEqual(kwargs, params)
                 else:
-                    allowed_fields = {"env", "runner", "device", "seed"}
+                    allowed_fields = {
+                        "env", "runner", "learner", "sampler", "evaluator", "seed"
+                    }
                     self.assertLessEqual(set(config), allowed_fields)
                     env_fields = set(config["env"])
                     self.assertIn("module", env_fields)
                     self.assertNotIn("role", env_fields)
                     self.assertLessEqual(set(config["runner"]), runner_params)
-                    device_fields = set(config.get("device", {}))
-                    allowed_device_fields = {"learner", "sampler", "evaluator"}
-                    self.assertLessEqual(device_fields, allowed_device_fields)
+                    for role in ("learner", "sampler", "evaluator"):
+                        fields = set(config.get(role) or {})
+                        if role == "learner" and "device" in fields:
+                            fields.remove("device")
+                            fields.add("learner_device")
+                        self.assertLessEqual(fields, runner_params)
                     seed_fields = set(config.get("seed", {}))
                     allowed_seed_fields = {"learner", "sampler", "evaluator"}
                     self.assertLessEqual(seed_fields, allowed_seed_fields)
@@ -148,12 +153,14 @@ class StructureTest(unittest.TestCase):
             runner_config = yaml.safe_load(file)
         with (example_dir / "ppo.yaml").open("r", encoding="utf-8") as file:
             agent_config = yaml.safe_load(file)
-        runner_config["runner"]["collection_fragment_length"] = 8
-        runner_config["device"] = {
-            "learner": "gpu",
-            "sampler": {"num_sampler_gpus": 2, "num_samplers_per_gpu": 4},
-            "evaluator": {"num_evaluator_gpus": 1, "num_evaluators_per_gpu": 2},
-        }
+        runner_config["learner"]["device"] = "gpu"
+        runner_config["sampler"].update(
+            collection_fragment_length=8,
+            num_sampler_gpus=2,
+            num_samplers_per_gpu=4,
+        )
+        evaluator_config = runner_config["evaluator"]
+        evaluator_config.update(num_evaluator_gpus=1, num_evaluators_per_gpu=2)
 
         agent = object()
         environment = object()
@@ -167,7 +174,12 @@ class StructureTest(unittest.TestCase):
         expected_env_config = {"id": "CartPole-v1", "render_mode": None}
         self.assertEqual(captured_kwargs["env_config"], expected_env_config)
         self.assertEqual(captured_kwargs["agent_config"], agent_config["modules"])
+        self.assertEqual(captured_kwargs["num_learners"], 1)
+        self.assertEqual(captured_kwargs["num_samplers"], 1)
+        self.assertEqual(captured_kwargs["num_envs_per_sampler"], 4)
         self.assertEqual(captured_kwargs["collection_fragment_length"], 8)
+        self.assertEqual(captured_kwargs["num_evaluators"], 1)
+        self.assertEqual(captured_kwargs["num_episodes_per_evaluator"], 5)
         self.assertEqual(captured_kwargs["learner_device"], "gpu")
         self.assertEqual(captured_kwargs["num_sampler_gpus"], 2)
         self.assertEqual(captured_kwargs["num_samplers_per_gpu"], 4)
@@ -176,6 +188,26 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(captured_kwargs["learner_seed"], 0)
         self.assertEqual(captured_kwargs["sampler_seed"], 0)
         self.assertEqual(captured_kwargs["evaluator_seed"], 0)
+        self.assertEqual(runner_config["learner"], {"num_learners": 1, "device": "gpu"})
+
+    def test_evaluation_config_loading(self):
+        config_path = CONFIG_ROOT / "cartpole" / "test.yaml"
+        runner_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        runner_args = (object(), object(), runner_config, {"modules": {}})
+
+        with patch.object(Runner, "__init__", return_value=None) as init:
+            Runner.from_config(*runner_args)
+        captured_kwargs = init.call_args.kwargs
+
+        self.assertEqual(captured_kwargs["eval_model"], "agent_100.pth")
+        self.assertNotIn("num_samplers", captured_kwargs)
+        self.assertEqual(captured_kwargs["num_evaluators"], 1)
+        self.assertEqual(captured_kwargs["num_episodes_per_evaluator"], 10)
+        self.assertEqual(captured_kwargs["num_evaluator_gpus"], 0)
+        self.assertEqual(captured_kwargs["num_evaluators_per_gpu"], 1)
+        self.assertEqual(captured_kwargs["evaluator_seed"], 0)
+        self.assertNotIn("num_learners", captured_kwargs)
+        self.assertNotIn("learner_device", captured_kwargs)
 
     def test_runner_device_allocation(self):
         gpu_bundles = [(1, 1)] * 2 + [(2, 1)] * 2 + [(1, 0), (2, 1)] + [(1, 0)] * 3

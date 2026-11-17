@@ -5,12 +5,6 @@ env:
 
 runner:
   ckpt_dir: checkpoints/car_racing
-  num_learners: 1
-  num_samplers: 1
-  num_envs_per_sampler: 4
-  collection_fragment_length: 128
-  num_evaluators: 1
-  num_episodes: 5
   max_updates: 100
   prefetch_depth: 1
   save_interval: 60
@@ -18,14 +12,22 @@ runner:
   log_name: log.csv
   load_checkpoint: true
 
-device:
-  learner: cpu
-  sampler:
-    num_sampler_gpus: 0
-    num_samplers_per_gpu: 1
-  evaluator:
-    num_evaluator_gpus: 0
-    num_evaluators_per_gpu: 1
+learner:
+  num_learners: 1
+  device: cpu
+
+sampler:
+  num_samplers: 1
+  num_envs_per_sampler: 4
+  collection_fragment_length: 128
+  num_sampler_gpus: 0
+  num_samplers_per_gpu: 1
+
+evaluator:
+  num_evaluators: 1
+  num_episodes_per_evaluator: 5
+  num_evaluator_gpus: 0
+  num_evaluators_per_gpu: 1
 
 seed:
   learner: 0

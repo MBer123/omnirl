@@ -32,7 +32,7 @@ class Runner:
         num_envs_per_sampler: Number of environments sharing each sampler policy.
         collection_fragment_length: Steps collected per environment per transfer.
         num_evaluators: Number of evaluator actors.
-        num_episodes: Number of evaluation episodes per evaluator.
+        num_episodes_per_evaluator: Number of evaluation episodes per evaluator.
         max_updates: Maximum number of learner updates.
         prefetch_depth: Maximum number of learner updates kept in flight.
         save_interval: Time in seconds between checkpoint saves.
@@ -62,7 +62,7 @@ class Runner:
         num_envs_per_sampler: int = 1,
         collection_fragment_length: int = 1,
         num_evaluators: int = 1,
-        num_episodes: int = 10,
+        num_episodes_per_evaluator: int = 10,
         max_updates: int = 10000000,
         prefetch_depth: int = 1,
         save_interval: int = 3600,
@@ -193,7 +193,7 @@ class Runner:
                     action_spec=action_spec,
                     network_kwargs=network_kwargs,
                     policy_kwargs=policy_kwargs,
-                    num_episodes=num_episodes,
+                    num_episodes_per_evaluator=num_episodes_per_evaluator,
                     device=device,
                     seed=seed,
                 )
@@ -235,7 +235,6 @@ class Runner:
     @classmethod
     def from_config(cls, agent, environment, runner_config, agent_config):
         """Create a Runner instance from parsed configuration dictionaries."""
-        device_param = runner_config.get("device", {})
         seed_param = runner_config.get("seed", {})
         env_param = dict(runner_config["env"])
         env_param.pop("module")
@@ -249,25 +248,12 @@ class Runner:
             **runner_config.get("runner", {}),
         }
 
-        # Load learner device arguments
-        if "learner" in device_param:
-            runner_kwargs["learner_device"] = device_param["learner"]
-
-        # Load sampler GPU allocation arguments
-        if "sampler" in device_param:
-            params = device_param["sampler"]
-            num_actor_gpus = "num_sampler_gpus"
-            actor_per_gpus = "num_samplers_per_gpu"
-            runner_kwargs[num_actor_gpus] = params.get(num_actor_gpus, 0)
-            runner_kwargs[actor_per_gpus] = params.get(actor_per_gpus, 1)
-
-        # Load evaluator GPU allocation arguments
-        if "evaluator" in device_param:
-            params = device_param["evaluator"]
-            num_actor_gpus = "num_evaluator_gpus"
-            actor_per_gpus = "num_evaluators_per_gpu"
-            runner_kwargs[num_actor_gpus] = params.get(num_actor_gpus, 0)
-            runner_kwargs[actor_per_gpus] = params.get(actor_per_gpus, 1)
+        # Load learner, sampler, and evaluator arguments
+        for role in ("learner", "sampler", "evaluator"):
+            params = dict(runner_config.get(role) or {})
+            if role == "learner" and "device" in params:
+                params["learner_device"] = params.pop("device")
+            runner_kwargs.update(params)
 
         # Load seed arguments
         seed_mapping = {

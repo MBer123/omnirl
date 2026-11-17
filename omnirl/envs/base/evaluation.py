@@ -7,7 +7,7 @@ class BaseEvaluationLoop(ABC):
     default_metrics = {}
 
     @abstractmethod
-    def run(self, policy, num_episodes: int) -> dict:
+    def run(self, policy, num_episodes_per_evaluator: int) -> dict:
         """Return backend-specific evaluation results for aggregation."""
         raise NotImplementedError
 

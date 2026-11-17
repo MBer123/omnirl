@@ -59,7 +59,7 @@ class IntegrationTest(unittest.TestCase):
                 "num_envs_per_sampler": num_envs,
                 "collection_fragment_length": fragment_length,
                 "num_evaluators": 1,
-                "num_episodes": 1,
+                "num_episodes_per_evaluator": 1,
                 "max_updates": 1,
                 "save_interval": 3600,
                 "log_interval": 3600,

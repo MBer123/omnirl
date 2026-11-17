@@ -16,7 +16,7 @@ class Evaluator:
         action_spec: Environment arguments for policy initialization.
         network_kwargs: Keyword arguments used to build the policy network.
         policy_kwargs: Keyword arguments used to build the policy.
-        num_episodes: Number of episodes to run during each evaluation.
+        num_episodes_per_evaluator: Number of episodes to run during each evaluation.
         device: Torch device to run the policy on.
         seed: Random seed used to ensure consistent results across runs.
     """
@@ -29,7 +29,7 @@ class Evaluator:
         action_spec,
         network_kwargs: dict | None = None,
         policy_kwargs: dict | None = None,
-        num_episodes: int = 1,
+        num_episodes_per_evaluator: int = 1,
         device: str = "cpu",
         seed: int | None = None,
     ):
@@ -49,12 +49,12 @@ class Evaluator:
             **policy_kwargs,
         )
         self.evaluation = evaluation_cls(env_builder=env_builder, seed=seed)
-        self.num_episodes = num_episodes
+        self.num_episodes_per_evaluator = num_episodes_per_evaluator
         self.version = -1
 
     def evaluate(self, weights, version):
         """Evaluate the current policy through the injected evaluation loop."""
         self.policy.set_weights(weights, version)
         self.version = version
-        result = self.evaluation.run(self.policy, self.num_episodes)
+        result = self.evaluation.run(self.policy, self.num_episodes_per_evaluator)
         return {"version": self.version, **result}

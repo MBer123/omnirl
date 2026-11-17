@@ -23,11 +23,11 @@ class EvaluationLoop(BaseEvaluationLoop):
         self.env = env_builder()
         self.env.reset(seed=seed)
 
-    def run(self, policy, num_episodes):
+    def run(self, policy, num_episodes_per_evaluator):
         """Evaluate a policy and return environment metrics."""
         episode_returns = []
 
-        for _ in range(num_episodes):
+        for _ in range(num_episodes_per_evaluator):
             observation, _ = self.env.reset()
             episode_return = 0.0
             done = False
@@ -45,7 +45,7 @@ class EvaluationLoop(BaseEvaluationLoop):
 
         returns = np.asarray(episode_returns, dtype=np.float32)
         return {
-            "num_episodes": int(num_episodes),
+            "num_episodes": int(num_episodes_per_evaluator),
             "metrics": {
                 "return_mean": float(returns.mean()),
                 "return_std": float(returns.std()),

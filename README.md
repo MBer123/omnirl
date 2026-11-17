@@ -152,9 +152,9 @@ python run.py --mode test --runner-config examples/cartpole/test.yaml --agent-co
 
 The example loads `agent_100.pth`. If you change the training update target, update `runner.eval_model` accordingly.
 
-The selected environment backend defines the evaluation metrics. The total number of evaluated episodes is `runner.num_evaluators * runner.num_episodes`.
+The selected environment backend defines the evaluation metrics. The total number of evaluated episodes is `evaluator.num_evaluators * evaluator.num_episodes_per_evaluator`.
 
-When a backend supports interactive rendering, set `env.render_mode` to `human` and `runner.num_evaluators` to `1` in the test configuration.
+When a backend supports interactive rendering, set `env.render_mode` to `human` and `evaluator.num_evaluators` to `1` in the test configuration.
 
 ## Adding an Algorithm
 
@@ -195,7 +195,7 @@ The environment backend should provide:
 - `EnvAdapter`: inherits `BaseEnv` from `omnirl.envs.base` to wrap an environment. `reset()` resets the environment, `step()` executes an action, `render()` renders the environment, and `close()` releases resources.
 - `EnvProvider`: inherits `BaseEnvProvider`. `build(env_config, role=None)` creates an environment from configuration; `get_spec(env_config)` provides observation dimensions, action bounds, and related details.
 - `CollectionLoop`: inherits `BaseCollectionLoop`. `run(policy, num_steps)` collects the requested steps per environment and returns training data.
-- `EvaluationLoop`: inherits `BaseEvaluationLoop`. `run(policy, num_episodes)` evaluates the requested episodes; `aggregate(eval_infos)` combines evaluator results. The `default_metrics` class attribute stores initial metric values.
+- `EvaluationLoop`: inherits `BaseEvaluationLoop`. `run(policy, num_episodes_per_evaluator)` evaluates the requested episodes; `aggregate(eval_infos)` combines evaluator results. The `default_metrics` class attribute stores initial metric values.
 
 Set the backend module in a runner configuration:
 
@@ -212,11 +212,11 @@ Algorithms and runtime actors communicate only through this interface, so neithe
 
 ## Notes
 
-- `device.learner` supports `cpu` and `gpu`. Multiple CPU learners use Gloo DDP; each GPU learner requires one GPU.
-- Under `device.sampler`, set `num_sampler_gpus` and `num_samplers_per_gpu` to configure the GPU count and processes per GPU.
-- Under `device.evaluator`, set `num_evaluator_gpus` and `num_evaluators_per_gpu` to configure the GPU count and processes per GPU.
+- `learner.device` supports `cpu` and `gpu`. Multiple CPU learners use Gloo DDP; each GPU learner requires one GPU.
+- Under `sampler`, set `num_sampler_gpus` and `num_samplers_per_gpu` to configure the GPU count and processes per GPU.
+- Under `evaluator`, set `num_evaluator_gpus` and `num_evaluators_per_gpu` to configure the GPU count and processes per GPU.
 - Sampler/evaluator GPU counts default to zero. Processes beyond the configured capacity use CPU; with zero GPUs, all processes use CPU.
-- Size `runner.num_samplers`, `runner.num_evaluators`, and `runner.num_learners` for the available hardware. As a starting point, keep their sum below 90% of the available CPU threads.
+- Size `sampler.num_samplers`, `evaluator.num_evaluators`, and `learner.num_learners` for the available hardware. 
 - Run the test suite with `python -m unittest discover -s tests -v`.
 - OmniRL is a research framework. Multi-seed algorithm validation and scaling results reflect the current experimental conditions and do not constitute production guarantees.
 
