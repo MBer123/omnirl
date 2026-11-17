@@ -79,6 +79,9 @@ The BipedalWalker and CarRacing examples require the Box2D extra:
 pip install "gymnasium[box2d]>=1.0,<2"
 ```
 
+On Windows, `torch>=2.11.0` is recommended to avoid Gloo initialization errors
+when training with multiple learners.
+
 For GPU training, install the PyTorch build that matches the operating system and CUDA runtime, then verify CUDA availability:
 
 ```bash

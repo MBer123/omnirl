@@ -79,6 +79,8 @@ BipedalWalker 与 CarRacing 示例需要 Box2D 附加依赖：
 pip install "gymnasium[box2d]>=1.0,<2"
 ```
 
+Windows 用户建议使用 `torch>=2.11.0`，以避免多 learner 训练时的 Gloo 初始化错误。
+
 如需使用 GPU 训练，请安装与操作系统和 CUDA 运行时相匹配的 PyTorch 版本，然后确认 CUDA 是否可用：
 
 ```bash
