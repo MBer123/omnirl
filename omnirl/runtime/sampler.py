@@ -6,7 +6,7 @@ import torch
 from omnirl.utils.seed import set_global_seed
 
 
-@ray.remote(num_cpus=1)
+@ray.remote
 class Sampler:
     """
     Generic distributed sampling worker.
@@ -20,6 +20,7 @@ class Sampler:
         policy_kwargs: Keyword arguments used to build the policy.
         num_envs_per_sampler: Number of environments sharing one inference batch.
         collection_fragment_length: Steps collected per environment per transfer.
+        device: Torch device to run the policy on.
         seed: Random seed used to ensure consistent results across runs.
     """
 
@@ -33,6 +34,7 @@ class Sampler:
         policy_kwargs: dict | None = None,
         num_envs_per_sampler: int = 1,
         collection_fragment_length: int = 1,
+        device: str = "cpu",
         seed: int | None = None,
     ):
         # Limit PyTorch CPU threads
@@ -46,6 +48,7 @@ class Sampler:
         # Initialize abstract algorithm and environment components
         self.policy = policy_cls(
             network_kwargs=network_kwargs,
+            device=device,
             **action_spec,
             **policy_kwargs,
         )

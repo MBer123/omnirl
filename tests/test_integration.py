@@ -42,7 +42,8 @@ class IntegrationTest(unittest.TestCase):
             },
             "network": {"layer_type": "MLP", "mlp_hidden_dims": [8, 8]},
         }
-        trained_samples = self.run_one_update(ppo, agent_config, num_envs=4, fragment_length=3)
+        rollout_kwargs = {"num_envs": 4, "fragment_length": 3}
+        trained_samples = self.run_one_update(ppo, agent_config, **rollout_kwargs)
         self.assertEqual(trained_samples, 6)
 
     def run_one_update(self, agent, agent_config, num_envs, fragment_length=1):

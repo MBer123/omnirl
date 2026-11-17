@@ -79,8 +79,7 @@ The BipedalWalker and CarRacing examples require the Box2D extra:
 pip install "gymnasium[box2d]>=1.0,<2"
 ```
 
-On Windows, `torch>=2.11.0` is recommended to avoid Gloo initialization errors
-when training with multiple learners.
+On Windows, `torch>=2.11.0` is recommended to avoid Gloo initialization errors when training with multiple learners.
 
 For GPU training, install the PyTorch build that matches the operating system and CUDA runtime, then verify CUDA availability:
 
@@ -141,7 +140,7 @@ Each run writes the following artifacts to `runner.ckpt_dir`:
 - `checkpoint.ckpt`: complete learner and optimizer state for resuming training.
 - `agent_<version>.pth`: exported policy weights.
 - `log.csv`: runtime, evaluation, and learner metrics.
-- `run_config.yaml`: merged runner and algorithm configuration used by the run.
+- `run_config.yaml`: merged runner and agent configuration used by the run.
 
 ## Evaluation
 
@@ -213,7 +212,10 @@ Algorithms and runtime actors communicate only through this interface, so neithe
 
 ## Notes
 
-- When training on CPU, set `device.learner` to `cpu` and keep `runner.num_learners` at `1`.
+- `device.learner` supports `cpu` and `gpu`. Multiple CPU learners use Gloo DDP; each GPU learner requires one GPU.
+- Under `device.sampler`, set `num_sampler_gpus` and `num_samplers_per_gpu` to configure the GPU count and processes per GPU.
+- Under `device.evaluator`, set `num_evaluator_gpus` and `num_evaluators_per_gpu` to configure the GPU count and processes per GPU.
+- Sampler/evaluator GPU counts default to zero. Processes beyond the configured capacity use CPU; with zero GPUs, all processes use CPU.
 - Size `runner.num_samplers`, `runner.num_evaluators`, and `runner.num_learners` for the available hardware. As a starting point, keep their sum below 90% of the available CPU threads.
 - Run the test suite with `python -m unittest discover -s tests -v`.
 - OmniRL is a research framework. Multi-seed algorithm validation and scaling results reflect the current experimental conditions and do not constitute production guarantees.

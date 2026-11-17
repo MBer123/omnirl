@@ -212,8 +212,11 @@ env:
 
 ## 注意事项
 
-- 使用 CPU 训练时，请将 `device.learner` 设置为 `cpu`，并保持 `runner.num_learners` 为 `1`。
-- 请根据可用硬件调整 `runner.num_samplers`、`runner.num_evaluators` 和 `runner.num_learners`。初次配置时，建议将三者总数控制在可用 CPU 线程数的 90% 以下。
+- `device.learner` 支持 `cpu`和 `gpu`。多个 CPU learner 使用 Gloo DDP；每个 GPU learner 需要一张 GPU。
+- 在 `device.sampler` 中，通过 `num_sampler_gpus` 和 `num_samplers_per_gpu` 设置 GPU 数量及每卡进程数。
+- 在 `device.evaluator` 中，通过 `num_evaluator_gpus` 和 `num_evaluators_per_gpu` 设置 GPU 数量及每卡进程数。
+- sampler/evaluator 的 GPU 数量默认为零；超出配置容量的进程使用 CPU，GPU 数量为零时全部使用 CPU。
+- 根据可用硬件调整 `runner.num_samplers`、`runner.num_evaluators` 和 `runner.num_learners`。初次配置时，建议将三者总数控制在可用 CPU 线程数的 90% 以下。
 - 使用 `python -m unittest discover -s tests -v` 运行测试套件。
 - OmniRL 面向强化学习研究。基于多个随机种子的算法验证和扩展性结果仅代表当前实验条件，不构成生产级保证。
 

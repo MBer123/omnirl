@@ -21,6 +21,7 @@ class Policy(BasePolicy):
         decay_steps: Number of learner updates over which epsilon decays.
         random_warmup: Whether fresh training uses random warm-up actions.
         num_quantiles: Number of quantiles used by the value distribution.
+        device: Torch device to run the network on.
     """
 
     def __init__(
@@ -36,16 +37,21 @@ class Policy(BasePolicy):
         decay_steps: int = 100000,
         random_warmup: bool = True,
         num_quantiles: int = 25,
+        device: str = "cpu",
     ):
-        self.device = torch.device("cpu")
+        # Initialize device
+        self.device = torch.device("cuda:0" if device == "gpu" else "cpu")
+
+        # Initialize parameters
         self.action_dim = action_dim
         self.epsilon = epsilon_start
         self.epsilon_start = epsilon_start
         self.epsilon_end = epsilon_end
         self.epsilon_decay = (epsilon_end / epsilon_start) ** (1 / decay_steps)
         self.random_warmup = random_warmup
-        self.version = -1
 
+        # Initialize online network
+        self.version = -1
         network_kwargs = dict(network_kwargs or {})
         layer_type = network_kwargs.pop("layer_type")
         q_net = QuantileQNetwork(

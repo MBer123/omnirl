@@ -12,7 +12,7 @@ modules:
     max_grad_norm: 0.5
 
   memory:
-    batch_size: 256
+    batch_size: 512
     track_version: true
 
   network:

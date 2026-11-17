@@ -62,7 +62,7 @@ class Learner(BaseLearner):
         num_critics: int = 5,
         num_quantiles: int = 25,
         drop_per_net: int = 2,
-        device: str | None = None,
+        device: str = "cpu",
         seed: int | None = None,
         rank: int = 0,
         world_size: int = 1,
@@ -82,10 +82,7 @@ class Learner(BaseLearner):
         os.makedirs(self.ckpt_dir, exist_ok=True)
 
         # Initialize device
-        if device is None:
-            self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        else:
-            self.device = torch.device("cuda:0" if device == "gpu" else "cpu")
+        self.device = torch.device("cuda:0" if device == "gpu" else "cpu")
 
         # Initialize distributed training
         self.rank = rank

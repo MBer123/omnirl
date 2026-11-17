@@ -35,13 +35,14 @@ class NetworkTest(unittest.TestCase):
         self.assertEqual(projected_cnn(torch.randn(2, 8, 8, 3)).shape, (2, 8))
         self.assertEqual(projected_cnn.output_dim, 8)
 
-        resnet = ResNet(
-            state_dim=(32, 32, 3),
-            stem_channels=8,
-            stage_channels=(8, 16),
-            blocks_per_stage=(1, 1),
-            resnet_hidden_dims=(32,),
-        )
+        resnet_kwargs = {
+            "state_dim": (32, 32, 3),
+            "stem_channels": 8,
+            "stage_channels": (8, 16),
+            "blocks_per_stage": (1, 1),
+            "resnet_hidden_dims": (32,),
+        }
+        resnet = ResNet(**resnet_kwargs)
         self.assertEqual(resnet(torch.randn(2, 32, 32, 3)).shape, (2, 32))
         self.assertEqual(resnet.output_dim, 32)
 
@@ -49,17 +50,13 @@ class NetworkTest(unittest.TestCase):
         states = torch.randn(4, 6)
         network_kwargs = {"mlp_hidden_dims": (16, 8)}
 
-        actor = StochasticActorNetwork(
-            state_dim=6,
-            action_dim=3,
-            layer_type="MLP",
-            network_kwargs=network_kwargs,
-        )
-        critic = ValueCriticNetwork(
-            state_dim=6,
-            layer_type="MLP",
-            network_kwargs=network_kwargs,
-        )
+        feature_kwargs = {
+            "state_dim": 6,
+            "layer_type": "MLP",
+            "network_kwargs": network_kwargs,
+        }
+        actor = StochasticActorNetwork(action_dim=3, **feature_kwargs)
+        critic = ValueCriticNetwork(**feature_kwargs)
 
         self.assertEqual(actor(states).shape, (4, 3))
         self.assertEqual(critic(states).shape, (4, 1))
@@ -165,11 +162,12 @@ class NetworkTest(unittest.TestCase):
         self.assertEqual(means.shape, (2, 2))
         self.assertEqual(log_stds.shape, (2, 2))
 
-        value_critic = ValueCriticNetwork(
-            state_dim=state_dim,
-            layer_type="CNN",
-            network_kwargs=network_kwargs,
-        )
+        value_critic_kwargs = {
+            "state_dim": state_dim,
+            "layer_type": "CNN",
+            "network_kwargs": network_kwargs,
+        }
+        value_critic = ValueCriticNetwork(**value_critic_kwargs)
         self.assertEqual(value_critic(states).shape, (2, 1))
 
         q_critic_kwargs = {
@@ -259,52 +257,28 @@ class NetworkTest(unittest.TestCase):
             "resnet_hidden_dims": (32,),
         }
 
-        actor = StochasticActorNetwork(
-            state_dim=state_dim,
-            action_dim=3,
-            layer_type="RESNET",
-            network_kwargs=network_kwargs,
-        )
+        feature_kwargs = {
+            "state_dim": state_dim,
+            "layer_type": "RESNET",
+            "network_kwargs": network_kwargs,
+        }
+        actor = StochasticActorNetwork(action_dim=3, **feature_kwargs)
         self.assertEqual(actor(states).shape, (2, 3))
 
-        deterministic_actor = DeterministicActorNetwork(
-            state_dim=state_dim,
-            action_dim=2,
-            layer_type="RESNET",
-            network_kwargs=network_kwargs,
-        )
+        deterministic_actor = DeterministicActorNetwork(action_dim=2, **feature_kwargs)
         self.assertEqual(deterministic_actor(states).shape, (2, 2))
 
-        value_critic = ValueCriticNetwork(
-            state_dim=state_dim,
-            layer_type="RESNET",
-            network_kwargs=network_kwargs,
-        )
+        value_critic = ValueCriticNetwork(**feature_kwargs)
         self.assertEqual(value_critic(states).shape, (2, 1))
 
-        q_critic = QCriticNetwork(
-            state_dim=state_dim,
-            action_dim=2,
-            layer_type="RESNET",
-            network_kwargs=network_kwargs,
-        )
+        q_critic = QCriticNetwork(action_dim=2, **feature_kwargs)
         self.assertEqual(q_critic(states, actions).shape, (2, 1))
 
-        discrete_q_critic = DeepQNetwork(
-            state_dim=state_dim,
-            action_dim=3,
-            layer_type="RESNET",
-            network_kwargs=network_kwargs,
-        )
+        discrete_q_critic = DeepQNetwork(action_dim=3, **feature_kwargs)
         self.assertEqual(discrete_q_critic(states).shape, (2, 3))
 
-        quantile_critic = QuantileCriticNetwork(
-            state_dim=state_dim,
-            action_dim=2,
-            layer_type="RESNET",
-            num_quantiles=5,
-            network_kwargs=network_kwargs,
-        )
+        quantile_critic_kwargs = {**feature_kwargs, "action_dim": 2, "num_quantiles": 5}
+        quantile_critic = QuantileCriticNetwork(**quantile_critic_kwargs)
         self.assertEqual(quantile_critic(states, actions).shape, (2, 5))
 
         network_cases = (
@@ -315,13 +289,8 @@ class NetworkTest(unittest.TestCase):
         )
         for network_cls, kwargs, expected_shape in network_cases:
             with self.subTest(network=network_cls.__name__):
-                network = network_cls(
-                    state_dim=state_dim,
-                    action_dim=3,
-                    layer_type="RESNET",
-                    network_kwargs=network_kwargs,
-                    **kwargs,
-                )
+                model_kwargs = {**feature_kwargs, "action_dim": 3, **kwargs}
+                network = network_cls(**model_kwargs)
                 self.assertEqual(network(states).shape, expected_shape)
 
     def test_network_checkpoint_roundtrip(self):
@@ -360,9 +329,9 @@ class NetworkTest(unittest.TestCase):
             (QCriticNetwork, cnn_actor_kwargs, (images, image_actions)),
         )
         for network_cls, kwargs, inputs in network_cases:
-            with self.subTest(
-                network=network_cls.__name__, layer_type=kwargs["layer_type"]
-            ):
+            network_name = network_cls.__name__
+            layer_type = kwargs["layer_type"]
+            with self.subTest(network=network_name, layer_type=layer_type):
                 network = network_cls(**kwargs)
                 with io.BytesIO() as checkpoint:
                     torch.save(network.state_dict(), checkpoint)

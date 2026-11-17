@@ -2,7 +2,7 @@ import ray
 import torch
 
 
-@ray.remote(num_cpus=1)
+@ray.remote
 class WeightStore:
     """
     A lightweight Ray actor for storing and serving model weights.
@@ -13,7 +13,6 @@ class WeightStore:
     """
 
     def __init__(self, init_state_dict: dict[str, torch.tensor], version: int):
-        # Initialize the version and state dict
         self.version = version
         self.state_dict = init_state_dict
 

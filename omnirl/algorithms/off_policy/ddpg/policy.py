@@ -18,6 +18,7 @@ class Policy(BasePolicy):
         network_kwargs: Keyword arguments used to build the actor network.
         action_noise: Standard deviation of Gaussian exploration noise.
         random_warmup: Whether fresh training uses random warm-up actions.
+        device: Torch device to run the network on.
     """
 
     def __init__(
@@ -30,12 +31,16 @@ class Policy(BasePolicy):
         network_kwargs: dict | None = None,
         action_noise: float = 0.1,
         random_warmup: bool = True,
+        device: str = "cpu",
     ):
-        self.device = torch.device("cpu")
+        # Initialize device
+        self.device = torch.device("cuda:0" if device == "gpu" else "cpu")
+
+        # Initialize parameters
         self.action_noise = action_noise
         self.random_warmup = random_warmup
-        self.version = -1
 
+        # Initialize action scaling
         action_low = np.asarray(action_low, dtype=np.float32)
         action_high = np.asarray(action_high, dtype=np.float32)
 
@@ -44,9 +49,12 @@ class Policy(BasePolicy):
         self.action_scale = (action_high - action_low) / 2.0
         self.action_bias = (action_high + action_low) / 2.0
 
+        # Initialize online network
+        self.version = -1
         network_kwargs = dict(network_kwargs or {})
         actor_kwargs = dict(network_kwargs.get("actor", network_kwargs))
         layer_type = actor_kwargs.pop("layer_type")
+
         actor = DeterministicActorNetwork(
             state_dim=state_dim,
             action_dim=action_dim,

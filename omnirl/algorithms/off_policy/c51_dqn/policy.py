@@ -23,6 +23,7 @@ class Policy(BasePolicy):
         num_atoms: Number of atoms used by the categorical value distribution.
         v_min: Minimum value of the categorical support.
         v_max: Maximum value of the categorical support.
+        device: Torch device to run the network on.
     """
 
     def __init__(
@@ -40,8 +41,12 @@ class Policy(BasePolicy):
         num_atoms: int = 51,
         v_min: float = -100,
         v_max: float = 100,
+        device: str = "cpu",
     ):
-        self.device = torch.device("cpu")
+        # Initialize device
+        self.device = torch.device("cuda:0" if device == "gpu" else "cpu")
+
+        # Initialize parameters
         self.action_dim = action_dim
         self.epsilon = epsilon_start
         self.epsilon_start = epsilon_start
@@ -49,8 +54,9 @@ class Policy(BasePolicy):
         self.epsilon_decay = (epsilon_end / epsilon_start) ** (1 / decay_steps)
         self.random_warmup = random_warmup
         self.support = torch.linspace(v_min, v_max, num_atoms, device=self.device)
-        self.version = -1
 
+        # Initialize online network
+        self.version = -1
         network_kwargs = dict(network_kwargs or {})
         layer_type = network_kwargs.pop("layer_type")
         q_net = CategoricalQNetwork(

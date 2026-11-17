@@ -11,6 +11,7 @@ from omnirl.utils.file_writer import FileWriter
 from omnirl.utils.logger import setup_logger
 
 from .evaluator import Evaluator
+from .resources import ResourceAllocator
 from .sampler import Sampler
 from .weight_store import WeightStore
 
@@ -39,6 +40,10 @@ class Runner:
         log_name: Name of the training log file.
         load_checkpoint: Whether to resume training from an existing checkpoint.
         learner_device: Device selector used to run the learner.
+        num_sampler_gpus: Number of GPUs reserved for samplers.
+        num_samplers_per_gpu: Maximum number of samplers sharing each GPU.
+        num_evaluator_gpus: Number of GPUs reserved for evaluators.
+        num_evaluators_per_gpu: Maximum number of evaluators sharing each GPU.
         learner_seed: Random seed used for learner.
         sampler_seed: Random seed used for sampler.
         evaluator_seed: Random seed used for evaluator.
@@ -64,7 +69,11 @@ class Runner:
         log_interval: int = 60,
         log_name: str = "log.csv",
         load_checkpoint: bool = True,
-        learner_device: str | None = None,
+        learner_device: str = "cpu",
+        num_sampler_gpus: int = 0,
+        num_samplers_per_gpu: int = 1,
+        num_evaluator_gpus: int = 0,
+        num_evaluators_per_gpu: int = 1,
         learner_seed: int | None = None,
         sampler_seed: int | None = None,
         evaluator_seed: int | None = None,
@@ -76,6 +85,19 @@ class Runner:
                 "excludes": ["**/*.ckpt", "**/*.csv", "**/*.pth"],
             }
             ray.init(runtime_env=runtime_env)
+
+        # Initialize resource allocation
+        self.resources = ResourceAllocator(
+            num_learners,
+            num_samplers,
+            num_evaluators,
+            learner_device,
+            num_sampler_gpus,
+            num_samplers_per_gpu,
+            num_evaluator_gpus,
+            num_evaluators_per_gpu,
+        )
+        self.resources.reserve(timeout_seconds=30)
 
         # Initialize logging and checkpoint utilities
         self.log = setup_logger()
@@ -99,43 +121,49 @@ class Runner:
         network_kwargs = dict(agent_config.get("network") or {})
 
         # Initialize memory
+        _, options = self.resources.get_allocation("memory")
         memory_kwargs["collection_fragment_length"] = collection_fragment_length
-        self.memory = agent.Memory.remote(**state_spec, **memory_kwargs)
+        self.memory = agent.Memory.options(**options)
+        self.memory = self.memory.remote(**state_spec, **memory_kwargs)
         supports_prefetch = ray.get(self.memory.supports_prefetch.remote())
 
         # Initialize learner
-        num_gpus = 0 if learner_device == "cpu" else 1
-        self.learners = [
-            agent.Learner.options(num_gpus=num_gpus).remote(
-                network_kwargs=network_kwargs,
-                ckpt_dir=self.ckpt_dir,
-                device=learner_device,
-                seed=learner_seed,
-                rank=i,
-                world_size=num_learners,
-                **env_spec,
-                **learner_kwargs,
+        self.learners = []
+        for i in range(num_learners):
+            learner_device, options = self.resources.get_allocation("learner", i)
+            self.learners.append(
+                agent.Learner.options(**options).remote(
+                    network_kwargs=network_kwargs,
+                    ckpt_dir=self.ckpt_dir,
+                    device=learner_device,
+                    seed=learner_seed,
+                    rank=i,
+                    world_size=num_learners,
+                    **env_spec,
+                    **learner_kwargs,
+                )
             )
-            for i in range(num_learners)
-        ]
         self.learner = self.learners[0]
         if eval_model is not None:
             ray.get(self.learner.load_model.remote(eval_model))
 
         # Initialize weight store
+        _, options = self.resources.get_allocation("weight_store")
         init_weight = ray.get(self.learner.get_weights.remote())
         init_version = ray.get(self.learner.get_version.remote())
-        self.weight_store = WeightStore.remote(init_weight, init_version)
+        self.weight_store = WeightStore.options(**options)
+        self.weight_store = self.weight_store.remote(init_weight, init_version)
 
         # Initialize samplers
         self.samplers = []
         role = "collection"
         env_builder = partial(env_provider.build, env_config=env_config, role=role)
         for i in range(num_samplers):
+            device, options = self.resources.get_allocation("sampler", i)
             offset = 1000 + i * num_envs_per_sampler
             seed = None if sampler_seed is None else sampler_seed + offset
             self.samplers.append(
-                Sampler.remote(
+                Sampler.options(**options).remote(
                     policy_cls=agent.Policy,
                     collection_cls=environment.CollectionLoop,
                     env_builder=env_builder,
@@ -144,6 +172,7 @@ class Runner:
                     policy_kwargs=policy_kwargs,
                     num_envs_per_sampler=num_envs_per_sampler,
                     collection_fragment_length=collection_fragment_length,
+                    device=device,
                     seed=seed,
                 )
             )
@@ -153,10 +182,11 @@ class Runner:
         role = "evaluation"
         env_builder = partial(env_provider.build, env_config=env_config, role=role)
         for i in range(num_evaluators):
+            device, options = self.resources.get_allocation("evaluator", i)
             offset = 2000 + i
             seed = None if evaluator_seed is None else evaluator_seed + offset
             self.evaluators.append(
-                Evaluator.remote(
+                Evaluator.options(**options).remote(
                     policy_cls=agent.Policy,
                     evaluation_cls=environment.EvaluationLoop,
                     env_builder=env_builder,
@@ -164,6 +194,7 @@ class Runner:
                     network_kwargs=network_kwargs,
                     policy_kwargs=policy_kwargs,
                     num_episodes=num_episodes,
+                    device=device,
                     seed=seed,
                 )
             )
@@ -218,11 +249,25 @@ class Runner:
             **runner_config.get("runner", {}),
         }
 
-        # Load device arguments
-        device_mapping = {"learner": "learner_device"}
-        for src_key, dst_key in device_mapping.items():
-            if src_key in device_param:
-                runner_kwargs[dst_key] = device_param[src_key]
+        # Load learner device arguments
+        if "learner" in device_param:
+            runner_kwargs["learner_device"] = device_param["learner"]
+
+        # Load sampler GPU allocation arguments
+        if "sampler" in device_param:
+            params = device_param["sampler"]
+            num_actor_gpus = "num_sampler_gpus"
+            actor_per_gpus = "num_samplers_per_gpu"
+            runner_kwargs[num_actor_gpus] = params.get(num_actor_gpus, 0)
+            runner_kwargs[actor_per_gpus] = params.get(actor_per_gpus, 1)
+
+        # Load evaluator GPU allocation arguments
+        if "evaluator" in device_param:
+            params = device_param["evaluator"]
+            num_actor_gpus = "num_evaluator_gpus"
+            actor_per_gpus = "num_evaluators_per_gpu"
+            runner_kwargs[num_actor_gpus] = params.get(num_actor_gpus, 0)
+            runner_kwargs[actor_per_gpus] = params.get(actor_per_gpus, 1)
 
         # Load seed arguments
         seed_mapping = {

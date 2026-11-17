@@ -17,6 +17,7 @@ class Policy(BasePolicy):
         action_low: Lower bounds of the continuous action space.
         action_high: Upper bounds of the continuous action space.
         network_kwargs: Keyword arguments used to build the actor network.
+        device: Torch device to run the network on.
     """
 
     def __init__(
@@ -27,11 +28,15 @@ class Policy(BasePolicy):
         action_low: np.ndarray | None = None,
         action_high: np.ndarray | None = None,
         network_kwargs: dict | None = None,
+        device: str = "cpu",
     ):
-        self.device = torch.device("cpu")
-        self.is_continuous = is_continuous
-        self.version = -1
+        # Initialize device
+        self.device = torch.device("cuda:0" if device == "gpu" else "cpu")
 
+        # Initialize parameters
+        self.is_continuous = is_continuous
+
+        # Initialize action scaling
         if self.is_continuous:
             action_low = np.asarray(action_low, dtype=np.float32)
             action_high = np.asarray(action_high, dtype=np.float32)
@@ -41,11 +46,14 @@ class Policy(BasePolicy):
             self.action_scale = (action_high - action_low) / 2.0
             self.action_bias = (action_high + action_low) / 2.0
 
+        # Initialize actor network
+        self.version = -1
         network_kwargs = dict(network_kwargs or {})
         actor_kwargs = dict(network_kwargs.get("actor", network_kwargs))
         layer_type = actor_kwargs.pop("layer_type")
         log_std_min = actor_kwargs.pop("log_std_min", -20.0)
         log_std_max = actor_kwargs.pop("log_std_max", 2.0)
+
         actor = StochasticActorNetwork(
             state_dim=state_dim,
             action_dim=action_dim,

@@ -16,7 +16,7 @@ modules:
     target_kl: 0.02
 
   memory:
-    batch_size: 256
+    batch_size: 512
     track_version: true
 
   network:

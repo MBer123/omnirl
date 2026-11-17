@@ -3,12 +3,8 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from omnirl.envs.gymnasium import (
-    CollectionLoop,
-    EnvAdapter,
-    EnvProvider,
-    EvaluationLoop,
-)
+from omnirl.envs.gymnasium import CollectionLoop, EvaluationLoop
+from omnirl.envs.gymnasium import EnvAdapter, EnvProvider
 
 
 class GymnasiumEnvironmentTest(unittest.TestCase):
@@ -20,9 +16,8 @@ class GymnasiumEnvironmentTest(unittest.TestCase):
                     expected_states = []
                     expected_next_states = []
                     for i in range(num_envs):
-                        observations = np.asarray(
-                            [[i, 0], [i, 1], [i, -1], [i, 2]], dtype=np.float32
-                        )
+                        observations = [[i, 0], [i, 1], [i, -1], [i, 2]]
+                        observations = np.asarray(observations, dtype=np.float32)
                         env = Mock()
                         env.reset.side_effect = [
                             (observations[0], {}),
@@ -38,61 +33,47 @@ class GymnasiumEnvironmentTest(unittest.TestCase):
 
                     actions = np.arange(num_envs)
                     if is_continuous:
-                        actions = np.stack((actions, -actions), axis=-1).astype(
-                            np.float32
-                        )
+                        actions = np.stack((actions, -actions), axis=-1)
+                        actions = actions.astype(np.float32)
+                    hidden_state = np.arange(num_envs * 3, dtype=np.float32)
+                    hidden_state = hidden_state.reshape(num_envs, 3)
                     policy = Mock()
                     policy.sample_action.return_value = {
                         "action": actions,
                         "env_action": actions + 10,
                         "extra_data": {
                             "log_probs": np.full(num_envs, -0.5, dtype=np.float32),
-                            "hidden_state": np.arange(
-                                num_envs * 3, dtype=np.float32
-                            ).reshape(num_envs, 3),
+                            "hidden_state": hidden_state,
                         },
                     }
-                    collection = CollectionLoop(
-                        env_builder=Mock(side_effect=envs),
-                        seed=10,
-                        num_envs=num_envs,
-                    )
+                    env_builder = Mock(side_effect=envs)
+                    collection = CollectionLoop(env_builder, seed=10, num_envs=num_envs)
 
                     rollout = collection.run(policy, num_steps=2)
 
                     np.testing.assert_array_equal(rollout["states"], expected_states)
-                    np.testing.assert_array_equal(
-                        rollout["next_states"], expected_next_states
-                    )
+                    next_states = rollout["next_states"]
+                    np.testing.assert_array_equal(next_states, expected_next_states)
                     self.assertEqual(rollout["states"].dtype, np.float32)
-                    np.testing.assert_array_equal(
-                        rollout["rewards"], np.tile([1.0, 2.0], (num_envs, 1))
-                    )
-                    np.testing.assert_array_equal(
-                        rollout["terminals"],
-                        [[i % 2 == 0, False] for i in range(num_envs)],
-                    )
-                    np.testing.assert_array_equal(
-                        rollout["dones"], np.tile([True, False], (num_envs, 1))
-                    )
-                    np.testing.assert_array_equal(
-                        rollout["action"],
-                        np.stack((actions, actions), axis=1),
-                    )
-                    np.testing.assert_array_equal(
-                        rollout["extra_data"]["log_probs"],
-                        np.full((num_envs, 2), -0.5, dtype=np.float32),
-                    )
-                    np.testing.assert_array_equal(
-                        rollout["extra_data"]["hidden_state"],
-                        np.repeat(
-                            np.arange(num_envs * 3, dtype=np.float32).reshape(
-                                num_envs, 1, 3
-                            ),
-                            2,
-                            axis=1,
-                        ),
-                    )
+                    expected_rewards = np.tile([1.0, 2.0], (num_envs, 1))
+                    expected_terminals = [[i % 2 == 0, False] for i in range(num_envs)]
+                    expected_dones = np.tile([True, False], (num_envs, 1))
+                    expected_actions = np.stack((actions, actions), axis=1)
+                    terminals = rollout["terminals"]
+                    np.testing.assert_array_equal(rollout["rewards"], expected_rewards)
+                    np.testing.assert_array_equal(terminals, expected_terminals)
+                    np.testing.assert_array_equal(rollout["dones"], expected_dones)
+                    np.testing.assert_array_equal(rollout["action"], expected_actions)
+
+                    extra_data = rollout["extra_data"]
+                    expected_log_probs = np.full((num_envs, 2), -0.5, dtype=np.float32)
+                    expected_hidden = np.arange(num_envs * 3, dtype=np.float32)
+                    expected_hidden = expected_hidden.reshape(num_envs, 1, 3)
+                    expected_hidden = np.repeat(expected_hidden, 2, axis=1)
+                    log_probs = extra_data["log_probs"]
+                    hidden_state = extra_data["hidden_state"]
+                    np.testing.assert_array_equal(log_probs, expected_log_probs)
+                    np.testing.assert_array_equal(hidden_state, expected_hidden)
                     self.assertEqual(policy.sample_action.call_count, 2)
 
     def test_collection_disables_rendering(self):
@@ -135,9 +116,8 @@ class GymnasiumEnvironmentTest(unittest.TestCase):
         config = {"id": "Example-v0", "render_mode": "human", "max_episode_steps": 7}
         with patch("omnirl.envs.gymnasium.backend.gym.make") as make:
             EnvProvider.build(config, role="collection")
-        make.assert_called_once_with(
-            "Example-v0", render_mode=None, max_episode_steps=7
-        )
+        expected_options = {"render_mode": None, "max_episode_steps": 7}
+        make.assert_called_once_with("Example-v0", **expected_options)
         self.assertEqual(config["render_mode"], "human")
         self.assertEqual(config["max_episode_steps"], 7)
 
@@ -151,9 +131,8 @@ class GymnasiumEnvironmentTest(unittest.TestCase):
                 config = {"id": env_id}
                 env = EnvProvider.build(config)
                 try:
-                    with patch.object(
-                        CustomProvider, "build", autospec=True, return_value=env
-                    ) as build:
+                    build_kwargs = {"autospec": True, "return_value": env}
+                    with patch.object(CustomProvider, "build", **build_kwargs) as build:
                         with patch.object(env, "close", wraps=env.close) as close:
                             spec = CustomProvider.get_spec(config)
                             close.assert_called_once_with()
@@ -168,17 +147,14 @@ class GymnasiumEnvironmentTest(unittest.TestCase):
                 }
                 self.assertEqual(set(spec), {"env_spec", "state_spec", "action_spec"})
                 self.assertEqual(spec["env_spec"], env_spec)
-                self.assertEqual(
-                    spec["state_spec"],
-                    {**env_spec, "state_dtype": np.dtype(np.float32)},
-                )
+                state_spec = {**env_spec, "state_dtype": np.dtype(np.float32)}
+                self.assertEqual(spec["state_spec"], state_spec)
                 for key, value in env_spec.items():
                     self.assertEqual(spec["action_spec"][key], value)
                 for name, bound in [("action_low", -2.0), ("action_high", 2.0)]:
                     if is_continuous:
-                        np.testing.assert_array_equal(
-                            spec["action_spec"][name], [bound]
-                        )
+                        action_bound = spec["action_spec"][name]
+                        np.testing.assert_array_equal(action_bound, [bound])
                     else:
                         self.assertIsNone(spec["action_spec"][name])
 
@@ -201,35 +177,30 @@ class GymnasiumEnvironmentTest(unittest.TestCase):
                 first = evaluation.run(policy, num_episodes=2)
                 second = evaluation.run(policy, num_episodes=1)
 
-                self.assertEqual(
-                    first,
-                    {
-                        "num_episodes": 2,
-                        "metrics": {
-                            "return_mean": 4.0,
-                            "return_std": 1.0,
-                            "return_max": 5.0,
-                            "return_min": 3.0,
-                        },
+                expected_first = {
+                    "num_episodes": 2,
+                    "metrics": {
+                        "return_mean": 4.0,
+                        "return_std": 1.0,
+                        "return_max": 5.0,
+                        "return_min": 3.0,
                     },
-                )
-                self.assertEqual(
-                    second,
-                    {
-                        "num_episodes": 1,
-                        "metrics": {
-                            "return_mean": 9.0,
-                            "return_std": 0.0,
-                            "return_max": 9.0,
-                            "return_min": 9.0,
-                        },
+                }
+                expected_second = {
+                    "num_episodes": 1,
+                    "metrics": {
+                        "return_mean": 9.0,
+                        "return_std": 0.0,
+                        "return_max": 9.0,
+                        "return_min": 9.0,
                     },
-                )
+                }
+                self.assertEqual(first, expected_first)
+                self.assertEqual(second, expected_second)
                 self.assertEqual(env.reset.call_count, 4)
                 self.assertEqual(policy.choose_action.call_count, 4)
-                self.assertEqual(
-                    env.render.call_count, 4 if render_mode == "human" else 0
-                )
+                expected_render_count = 4 if render_mode == "human" else 0
+                self.assertEqual(env.render.call_count, expected_render_count)
 
 
 if __name__ == "__main__":

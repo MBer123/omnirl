@@ -20,6 +20,12 @@ runner:
 
 device:
   learner: cpu
+  sampler:
+    num_sampler_gpus: 0
+    num_samplers_per_gpu: 1
+  evaluator:
+    num_evaluator_gpus: 0
+    num_evaluators_per_gpu: 1
 
 seed:
   learner: 0

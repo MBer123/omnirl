@@ -6,11 +6,14 @@ env:
 runner:
   ckpt_dir: checkpoints/car_racing
   eval_model: agent_100.pth
+  num_samplers: 0
   num_evaluators: 1
   num_episodes: 10
 
 device:
-  learner: cpu
+  evaluator:
+    num_evaluator_gpus: 0
+    num_evaluators_per_gpu: 1
 
 seed:
   evaluator: 0

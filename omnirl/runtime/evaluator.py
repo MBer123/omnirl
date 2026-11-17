@@ -4,7 +4,7 @@ import torch
 from omnirl.utils.seed import set_global_seed
 
 
-@ray.remote(num_cpus=1)
+@ray.remote
 class Evaluator:
     """
     Generic distributed evaluation worker.
@@ -17,6 +17,7 @@ class Evaluator:
         network_kwargs: Keyword arguments used to build the policy network.
         policy_kwargs: Keyword arguments used to build the policy.
         num_episodes: Number of episodes to run during each evaluation.
+        device: Torch device to run the policy on.
         seed: Random seed used to ensure consistent results across runs.
     """
 
@@ -29,6 +30,7 @@ class Evaluator:
         network_kwargs: dict | None = None,
         policy_kwargs: dict | None = None,
         num_episodes: int = 1,
+        device: str = "cpu",
         seed: int | None = None,
     ):
         # Limit PyTorch CPU threads
@@ -42,6 +44,7 @@ class Evaluator:
         # Initialize abstract algorithm and environment components
         self.policy = policy_cls(
             network_kwargs=network_kwargs,
+            device=device,
             **action_spec,
             **policy_kwargs,
         )

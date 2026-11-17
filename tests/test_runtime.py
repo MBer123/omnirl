@@ -97,6 +97,7 @@ class RuntimeTest(unittest.TestCase):
         }
         memory = ReplayBuffer.remote(**memory_kwargs)
 
+        hidden_states = np.array([[[0, 0], [1, -1], [2, -2]]], dtype=np.float32)
         rollout = {
             "states": np.zeros((1, 3, 4), dtype=np.float32),
             "next_states": np.ones((1, 3, 4), dtype=np.float32),
@@ -104,7 +105,7 @@ class RuntimeTest(unittest.TestCase):
             "terminals": np.zeros((1, 3), dtype=np.bool_),
             "action": np.zeros((1, 3), dtype=np.int64),
             "extra_data": {
-                "hidden_state": np.array([[[0, 0], [1, -1], [2, -2]]], dtype=np.float32),
+                "hidden_state": hidden_states,
             },
         }
         ray.get(memory.add.remote(rollout))
@@ -114,10 +115,9 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(batch["states"].shape, (2, 4))
         self.assertEqual(batch["actions"].shape, (2,))
         self.assertNotIn("extra_data", batch)
-        np.testing.assert_array_equal(
-            batch["hidden_state"],
-            np.stack((batch["rewards"], -batch["rewards"]), axis=-1),
-        )
+        rewards = batch["rewards"]
+        expected_hidden_states = np.stack((rewards, -rewards), axis=-1)
+        np.testing.assert_array_equal(batch["hidden_state"], expected_hidden_states)
 
         ray.get(memory.on_learn.remote([{}]))
         self.assertTrue(ray.get(memory.ready.remote()))
@@ -134,6 +134,7 @@ class RuntimeTest(unittest.TestCase):
         }
         memory = PrioritizedReplayBuffer.remote(**memory_kwargs)
 
+        hidden_states = np.array([[[0, 0], [1, -1], [2, -2]]], dtype=np.float32)
         rollout = {
             "states": np.zeros((1, 3, 4), dtype=np.float32),
             "next_states": np.ones((1, 3, 4), dtype=np.float32),
@@ -141,7 +142,7 @@ class RuntimeTest(unittest.TestCase):
             "terminals": np.zeros((1, 3), dtype=np.bool_),
             "action": np.zeros((1, 3), dtype=np.int64),
             "extra_data": {
-                "hidden_state": np.array([[[0, 0], [1, -1], [2, -2]]], dtype=np.float32),
+                "hidden_state": hidden_states,
             },
         }
         ray.get(memory.add.remote(rollout))
@@ -149,10 +150,9 @@ class RuntimeTest(unittest.TestCase):
         batch = ray.get(memory.get_batch.remote(0, 1))
         self.assertEqual(batch["weights"].shape, (2,))
         self.assertNotIn("extra_data", batch)
-        np.testing.assert_array_equal(
-            batch["hidden_state"],
-            np.stack((batch["rewards"], -batch["rewards"]), axis=-1),
-        )
+        rewards = batch["rewards"]
+        expected_hidden_states = np.stack((rewards, -rewards), axis=-1)
+        np.testing.assert_array_equal(batch["hidden_state"], expected_hidden_states)
         learn_info = {
             "indices": batch["indices"],
             "td_errors": np.ones(2, dtype=np.float32),
@@ -229,7 +229,8 @@ class RuntimeTest(unittest.TestCase):
         abs_td = td.abs()
         huber = torch.where(abs_td <= 1.0, 0.5 * td.pow(2), abs_td - 0.5)
         taus = torch.tensor([0.25, 0.75]).view(1, 2, 1)
-        expected = (torch.abs(taus - (td < 0).float()) * huber).sum(dim=1).mean()
+        quantile_weights = torch.abs(taus - (td < 0).float())
+        expected = (quantile_weights * huber).sum(dim=1).mean()
 
         actual = learner._quantile_huber_loss(current, target)
 
@@ -246,10 +247,8 @@ class RuntimeTest(unittest.TestCase):
         memory = RolloutBuffer.remote(**memory_kwargs)
         self.assertFalse(ray.get(memory.ready.remote()))
         self.assertIsNone(ray.get(memory.get_batch.remote(0, 1)))
-        self.assertEqual(
-            ray.get(memory.stats.remote()),
-            {"available_data": 0, "collected_data": 0},
-        )
+        stats = ray.get(memory.stats.remote())
+        self.assertEqual(stats, {"available_data": 0, "collected_data": 0})
 
         rollout = {
             "version": 0,
@@ -271,10 +270,8 @@ class RuntimeTest(unittest.TestCase):
         self.assertEqual(batch["log_probs"].shape, (2, 2))
         self.assertNotIn("extra_data", batch)
         np.testing.assert_array_equal(batch["states"], rollout["states"][:2])
-        self.assertEqual(
-            ray.get(memory.stats.remote()),
-            {"available_data": 4, "collected_data": 4},
-        )
+        stats = ray.get(memory.stats.remote())
+        self.assertEqual(stats, {"available_data": 4, "collected_data": 4})
 
         ray.get(memory.on_learn.remote([{"version": 1}]))
         self.assertFalse(ray.get(memory.ready.remote()))
