@@ -104,9 +104,9 @@ class Runner:
 
         # Initialize logging and checkpoint utilities
         self.log = setup_logger()
-        self.ckpt_dir = os.path.abspath(ckpt_dir)
-        self.ckpt_path = os.path.join(self.ckpt_dir, "checkpoint.ckpt")
-        self.fw = FileWriter(ckpt_dir=self.ckpt_dir, log_name=log_name)
+        ckpt = os.path.abspath(ckpt_dir)
+        self.ckpt_path = os.path.join(ckpt, "checkpoint.ckpt")
+        self.fw = FileWriter(ckpt_dir=ckpt, log_name=log_name)
 
         # Read the environment description through the backend interface
         env_config = dict(env_config)
@@ -143,7 +143,7 @@ class Runner:
             self.learners.append(
                 agent.Learner.options(**options).remote(
                     network_kwargs=network_kwargs,
-                    ckpt_dir=self.ckpt_dir,
+                    ckpt_dir=ckpt,
                     device=learner_device,
                     seed=learner_seed,
                     rank=i,
@@ -160,8 +160,8 @@ class Runner:
         _, options = self.resources.get_allocation("weight_store")
         init_weight = ray.get(self.learner.get_weights.remote())
         init_version = ray.get(self.learner.get_version.remote())
-        self.weight_store = WeightStore.options(**options)
-        self.weight_store = self.weight_store.remote(init_weight, init_version)
+        weight_store = WeightStore.options(**options)
+        self.weight_store = weight_store.remote(init_weight, init_version)
 
         # Initialize samplers
         self.samplers = []

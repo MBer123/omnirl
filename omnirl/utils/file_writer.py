@@ -11,7 +11,6 @@ class _CSVStream:
     """
 
     def __init__(self, path: str):
-        self.path = path
         self.fieldnames = None
         self.writer = None
 

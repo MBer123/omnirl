@@ -50,11 +50,9 @@ class Evaluator:
         )
         self.evaluation = evaluation_cls(env_builder=env_builder, seed=seed)
         self.num_episodes_per_evaluator = num_episodes_per_evaluator
-        self.version = -1
 
     def evaluate(self, weights, version):
         """Evaluate the current policy through the injected evaluation loop."""
         self.policy.set_weights(weights, version)
-        self.version = version
         result = self.evaluation.run(self.policy, self.num_episodes_per_evaluator)
-        return {"version": self.version, **result}
+        return {"version": version, **result}
