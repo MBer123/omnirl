@@ -10,6 +10,7 @@ class EvaluationLoop(BaseEvaluationLoop):
     Args:
         env_builder: Callable that builds a new environment instance.
         seed: Random seed used for the initial environment reset.
+        num_envs: Number of environments sharing each policy inference batch.
     """
 
     default_metrics = {
@@ -19,33 +20,45 @@ class EvaluationLoop(BaseEvaluationLoop):
         "return_min": 0,
     }
 
-    def __init__(self, env_builder, seed=None):
-        self.env = env_builder()
-        self.env.reset(seed=seed)
+    def __init__(self, env_builder, seed=None, num_envs=1):
+        self.envs = [env_builder() for _ in range(num_envs)]
+        for i, env in enumerate(self.envs):
+            env.reset(seed=None if seed is None else seed + i)
 
-    def run(self, policy, num_episodes_per_evaluator):
-        """Evaluate a policy and return environment metrics."""
+    def run(self, policy, num_episodes_per_env):
+        """Evaluate the requested number of episodes in each environment."""
         episode_returns = []
+        num_envs = len(self.envs)
+        remaining = [num_episodes_per_env] * num_envs
+        active = [i for i in range(num_envs) if remaining[i]]
+        observations = [None] * num_envs
+        current_returns = [0.0] * num_envs
+        for i in active:
+            observation, _ = self.envs[i].reset()
+            observations[i] = np.array(observation, copy=True)
 
-        for _ in range(num_episodes_per_evaluator):
-            observation, _ = self.env.reset()
-            episode_return = 0.0
-            done = False
+        while active:
+            batch = np.stack([observations[i] for i in active])
+            actions = policy.choose_action(batch)
+            for i, action in zip(active, actions):
+                env = self.envs[i]
+                if env.render_mode == "human":
+                    env.render()
 
-            while not done:
-                if self.env.render_mode == "human":
-                    self.env.render()
-
-                action = policy.choose_action(observation)
-                observation, reward, terminated, truncated, _ = self.env.step(action)
-                done = terminated or truncated
-                episode_return += float(reward)
-
-            episode_returns.append(episode_return)
+                observation, reward, terminated, truncated, _ = env.step(action)
+                current_returns[i] += float(reward)
+                if terminated or truncated:
+                    episode_returns.append(current_returns[i])
+                    current_returns[i] = 0.0
+                    remaining[i] -= 1
+                    if remaining[i]:
+                        observation, _ = env.reset()
+                observations[i] = np.array(observation, copy=True)
+            active = [i for i in active if remaining[i]]
 
         returns = np.asarray(episode_returns, dtype=np.float32)
         return {
-            "num_episodes": int(num_episodes_per_evaluator),
+            "num_episodes": len(episode_returns),
             "metrics": {
                 "return_mean": float(returns.mean()),
                 "return_std": float(returns.std()),

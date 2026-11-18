@@ -171,11 +171,11 @@ class GymnasiumEnvironmentTest(unittest.TestCase):
                     (observation, 9.0, True, False, {}),
                 ]
                 policy = Mock()
-                policy.choose_action.return_value = 0
+                policy.choose_action.return_value = np.array([0])
                 evaluation = EvaluationLoop(env_builder=lambda: env, seed=10)
 
-                first = evaluation.run(policy, num_episodes_per_evaluator=2)
-                second = evaluation.run(policy, num_episodes_per_evaluator=1)
+                first = evaluation.run(policy, num_episodes_per_env=2)
+                second = evaluation.run(policy, num_episodes_per_env=1)
 
                 expected_first = {
                     "num_episodes": 2,
@@ -201,6 +201,73 @@ class GymnasiumEnvironmentTest(unittest.TestCase):
                 self.assertEqual(policy.choose_action.call_count, 4)
                 expected_render_count = 4 if render_mode == "human" else 0
                 self.assertEqual(env.render.call_count, expected_render_count)
+
+    def test_evaluation_batches_equal_episodes_per_env(self):
+        cases = [(2, 10, [2, 3, 2, 3, 3, 3]), (1, None, [2, 3, 3])]
+        for num_episodes, seed, returns in cases:
+            for is_continuous in (False, True):
+                with self.subTest(episodes=num_episodes, continuous=is_continuous):
+                    envs = []
+                    for i in range(3):
+                        observation = np.array([i, 0], dtype=np.float32)
+                        env = Mock(render_mode="human")
+                        env.reset.return_value = (observation, {})
+                        steps = []
+                        length = 3 if i == 0 else 1
+                        for _ in range(num_episodes):
+                            for step in range(1, length + 1):
+                                done = step == length
+                                next_observation = np.array([i, step], dtype=np.float32)
+                                transition = (
+                                    next_observation,
+                                    float(i + 1),
+                                    done and i % 2 == 0,
+                                    done and i % 2 == 1,
+                                    {},
+                                )
+                                steps.append(transition)
+                        env.step.side_effect = steps
+                        envs.append(env)
+
+                    def choose_action(observations):
+                        actions = observations[:, 0].astype(np.int64)
+                        if is_continuous:
+                            actions = np.stack((actions, -actions), axis=-1)
+                        return actions
+
+                    policy = Mock()
+                    policy.choose_action.side_effect = choose_action
+                    env_builder = Mock(side_effect=envs)
+                    evaluation = EvaluationLoop(env_builder, seed=seed, num_envs=3)
+                    result = evaluation.run(policy, num_episodes)
+
+                    returns = np.asarray(returns, dtype=np.float32)
+                    expected_metrics = {
+                        "return_mean": float(returns.mean()),
+                        "return_std": float(returns.std()),
+                        "return_max": float(returns.max()),
+                        "return_min": float(returns.min()),
+                    }
+                    self.assertEqual(result["num_episodes"], 3 * num_episodes)
+                    self.assertEqual(result["metrics"], expected_metrics)
+                    expected_batches = [[0, 1, 2]] * num_episodes
+                    expected_batches += [[0]] * (2 * num_episodes)
+                    calls = policy.choose_action.call_args_list
+                    self.assertEqual(len(calls), len(expected_batches))
+                    for call, expected in zip(calls, expected_batches):
+                        np.testing.assert_array_equal(call.args[0][:, 0], expected)
+                    policy.sample_action.assert_not_called()
+                    for i, env in enumerate(envs):
+                        expected_seed = None if seed is None else seed + i
+                        reset_kwargs = env.reset.call_args_list[0].kwargs
+                        expected_steps = num_episodes * (3 if i == 0 else 1)
+                        self.assertEqual(reset_kwargs, {"seed": expected_seed})
+                        self.assertEqual(env.reset.call_count, num_episodes + 1)
+                        self.assertEqual(env.step.call_count, expected_steps)
+                        self.assertEqual(env.render.call_count, env.step.call_count)
+                        expected_action = np.array([i, -i]) if is_continuous else i
+                        for call in env.step.call_args_list:
+                            np.testing.assert_array_equal(call.args[0], expected_action)
 
 
 if __name__ == "__main__":

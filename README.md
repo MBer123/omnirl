@@ -152,9 +152,9 @@ python run.py --mode test --runner-config examples/cartpole/test.yaml --agent-co
 
 The example loads `agent_100.pth`. If you change the training update target, update `runner.eval_model` accordingly.
 
-The selected environment backend defines the evaluation metrics. The total number of evaluated episodes is `evaluator.num_evaluators * evaluator.num_episodes_per_evaluator`.
+The selected environment backend defines the evaluation metrics. The total number of evaluated episodes is `evaluator.num_evaluators * evaluator.num_envs_per_evaluator * evaluator.num_episodes_per_env`.
 
-When a backend supports interactive rendering, set `env.render_mode` to `human` and `evaluator.num_evaluators` to `1` in the test configuration.
+When a backend supports interactive rendering, set `env.render_mode` to `human` and both `evaluator.num_evaluators` and `evaluator.num_envs_per_evaluator` to `1` in the test configuration.
 
 ## Adding an Algorithm
 
@@ -171,7 +171,7 @@ __all__ = ["Learner", "Memory", "Policy"]
 The implementation should provide:
 
 - `Learner`: a class inheriting `BaseLearner` from `omnirl.algorithms.base`, wrapped as a Ray actor, that implements learning, checkpointing, and versioned weight access. Existing learners can be used as interface examples.
-- `Policy`: a local inference class inheriting `BasePolicy` from `omnirl.algorithms.base`, with deterministic `choose_action(observation)` for a single observation and exploratory `sample_action(observations)` for a batch. Sampling inputs and outputs must retain the leading batch dimension, including when the batch size is 1.
+- `Policy`: a class inheriting `BasePolicy` from `omnirl.algorithms.base`, with deterministic `choose_action(observations)` and exploratory `sample_action(observations)` for batches of observations. Both methods must retain the leading batch dimension in inputs and outputs, including when the batch size is 1.
 - `Memory`: one of the buffers in `omnirl.buffers`, or a compatible new Ray actor.
 - Network definitions under `omnirl.networks` when the algorithm needs a new architecture.
 - An agent YAML whose `agent.module` points to `omnirl.algorithms.on_policy.<name>` or `omnirl.algorithms.off_policy.<name>` and whose `modules` section supplies the constructor parameters.
@@ -195,7 +195,7 @@ The environment backend should provide:
 - `EnvAdapter`: inherits `BaseEnv` from `omnirl.envs.base` to wrap an environment. `reset()` resets the environment, `step()` executes an action, `render()` renders the environment, and `close()` releases resources.
 - `EnvProvider`: inherits `BaseEnvProvider`. `build(env_config, role=None)` creates an environment from configuration; `get_spec(env_config)` provides observation dimensions, action bounds, and related details.
 - `CollectionLoop`: inherits `BaseCollectionLoop`. `run(policy, num_steps)` collects the requested steps per environment and returns training data.
-- `EvaluationLoop`: inherits `BaseEvaluationLoop`. `run(policy, num_episodes_per_evaluator)` evaluates the requested episodes; `aggregate(eval_infos)` combines evaluator results. The `default_metrics` class attribute stores initial metric values.
+- `EvaluationLoop`: inherits `BaseEvaluationLoop`. `run(policy, num_episodes_per_env)` evaluates the requested number of episodes in each environment; `aggregate(eval_infos)` combines evaluator results. The `default_metrics` class attribute stores initial metric values.
 
 Set the backend module in a runner configuration:
 
@@ -216,7 +216,7 @@ Algorithms and runtime actors communicate only through this interface, so neithe
 - Under `sampler`, set `num_sampler_gpus` and `num_samplers_per_gpu` to configure the GPU count and processes per GPU.
 - Under `evaluator`, set `num_evaluator_gpus` and `num_evaluators_per_gpu` to configure the GPU count and processes per GPU.
 - Sampler/evaluator GPU counts default to zero. Processes beyond the configured capacity use CPU; with zero GPUs, all processes use CPU.
-- Size `sampler.num_samplers`, `evaluator.num_evaluators`, and `learner.num_learners` for the available hardware. 
+- Size `sampler.num_samplers`, `evaluator.num_evaluators`, and `learner.num_learners` for the available hardware.
 - Run the test suite with `python -m unittest discover -s tests -v`.
 - OmniRL is a research framework. Multi-seed algorithm validation and scaling results reflect the current experimental conditions and do not constitute production guarantees.
 

@@ -4,8 +4,8 @@ import unittest
 import ray
 
 from omnirl.algorithms.off_policy import dqn, per_dqn
-from omnirl.envs import gymnasium
 from omnirl.algorithms.on_policy import ppo
+from omnirl.envs import gymnasium
 from omnirl.runtime.runner import Runner
 
 
@@ -79,7 +79,8 @@ class IntegrationTest(unittest.TestCase):
                 "num_envs_per_sampler": num_envs,
                 "collection_fragment_length": fragment_length,
                 "num_evaluators": 1,
-                "num_episodes_per_evaluator": 1,
+                "num_envs_per_evaluator": num_envs,
+                "num_episodes_per_env": 5,
                 "max_updates": max_updates,
                 "save_interval": 3600,
                 "log_interval": 3600,
@@ -95,6 +96,7 @@ class IntegrationTest(unittest.TestCase):
                 self.assertEqual(runner.version, max_updates)
                 self.assertEqual(len(runner.memories), num_buffers)
                 self.assertGreater(runner.trained_samples, 0)
+                self.assertEqual(runner.latest_eval_info["num_episodes"], num_envs * 5)
                 return runner.trained_samples
             finally:
                 ray.shutdown()

@@ -79,16 +79,16 @@ class Policy(BasePolicy):
             self.epsilon = max(self.epsilon_end, new_epsilon)
 
     @torch.no_grad()
-    def choose_action(self, observation):
-        """Greedy action selection during evaluation."""
-        observation = np.asarray(observation, dtype=np.float32)
-        state = torch.as_tensor(observation, device=self.device).unsqueeze(0)
+    def choose_action(self, observations):
+        """Select greedy actions for a batch of observations."""
+        observations = np.asarray(observations, dtype=np.float32)
+        state = torch.as_tensor(observations, device=self.device)
 
         q_logits = self.q_eval(state)
         q_probabilities = torch.softmax(q_logits, dim=-1)
         q_values = (q_probabilities * self.support.view(1, 1, -1)).sum(dim=-1)
 
-        return int(torch.argmax(q_values, dim=-1).item())
+        return torch.argmax(q_values, dim=-1).cpu().numpy()
 
     @torch.no_grad()
     def sample_action(self, observations):

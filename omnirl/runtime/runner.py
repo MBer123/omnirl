@@ -32,7 +32,8 @@ class Runner:
         num_envs_per_sampler: Number of environments sharing each sampler policy.
         collection_fragment_length: Steps collected per environment per transfer.
         num_evaluators: Number of evaluator actors.
-        num_episodes_per_evaluator: Number of evaluation episodes per evaluator.
+        num_envs_per_evaluator: Number of environments sharing each evaluator policy.
+        num_episodes_per_env: Number of evaluation episodes per environment.
         num_buffers: Buffers sharing configured batch, capacity, and warm-up sizes.
         max_updates: Maximum number of learner updates.
         prefetch_depth: Maximum number of learner updates kept in flight.
@@ -63,7 +64,8 @@ class Runner:
         num_envs_per_sampler: int = 1,
         collection_fragment_length: int = 1,
         num_evaluators: int = 1,
-        num_episodes_per_evaluator: int = 10,
+        num_envs_per_evaluator: int = 1,
+        num_episodes_per_env: int = 10,
         num_buffers: int = 1,
         max_updates: int = 10000000,
         prefetch_depth: int = 1,
@@ -192,7 +194,7 @@ class Runner:
         env_builder = partial(env_provider.build, env_config=env_config, role=role)
         for i in range(num_evaluators):
             device, options = self.resources.get_allocation("evaluator", i)
-            offset = 2000 + i
+            offset = 2000 + i * num_envs_per_evaluator
             seed = None if evaluator_seed is None else evaluator_seed + offset
             self.evaluators.append(
                 Evaluator.options(**options).remote(
@@ -202,7 +204,8 @@ class Runner:
                     action_spec=action_spec,
                     network_kwargs=network_kwargs,
                     policy_kwargs=policy_kwargs,
-                    num_episodes_per_evaluator=num_episodes_per_evaluator,
+                    num_envs_per_evaluator=num_envs_per_evaluator,
+                    num_episodes_per_env=num_episodes_per_env,
                     device=device,
                     seed=seed,
                 )

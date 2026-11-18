@@ -152,9 +152,9 @@ python run.py --mode test --runner-config examples/cartpole/test.yaml --agent-co
 
 示例默认加载 `agent_100.pth`；调整训练更新次数后，请同步修改 `runner.eval_model`。
 
-评估指标由所选环境模块定义。总评估回合数为 `evaluator.num_evaluators * evaluator.num_episodes_per_evaluator`。
+评估指标由所选环境模块定义。总评估回合数为 `evaluator.num_evaluators * evaluator.num_envs_per_evaluator * evaluator.num_episodes_per_env`。
 
-当环境模块支持交互式渲染时，请在测试配置中将 `env.render_mode` 设置为 `human`，并将 `evaluator.num_evaluators` 设置为 `1`。
+当环境模块支持交互式渲染时，请在测试配置中将 `env.render_mode` 设置为 `human`，并将 `evaluator.num_evaluators` 和 `evaluator.num_envs_per_evaluator` 都设置为 `1`。
 
 ## 添加算法
 
@@ -171,7 +171,7 @@ __all__ = ["Learner", "Memory", "Policy"]
 算法模块需要提供：
 
 - `Learner`：继承 `omnirl.algorithms.base` 中的 `BaseLearner`，并包装为 Ray Actor，负责参数更新、检查点保存和带版本权重访问，可参考现有实现的接口。
-- `Policy`：继承 `omnirl.algorithms.base` 中的 `BasePolicy`，提供确定性 `choose_action(observation)` 和探索性 `sample_action(observations)` 方法的本地推理类。前者接收单个观测，后者接收批量观测；采样输入和输出必须保留首维 batch 维度，即使 batch 大小为 1。
+- `Policy`：继承 `omnirl.algorithms.base` 中的 `BasePolicy`，提供确定性 `choose_action(observations)` 和探索性 `sample_action(observations)` 方法。两者均接收批量观测，输入和输出必须保留首维 batch 维度，即使 batch 大小为 1。
 - `Memory`：`omnirl.buffers` 中的一种 Buffer，或符合相同接口的新 Ray Actor。
 - 如果算法需要新的网络架构，请在 `omnirl.networks` 下定义网络。
 - 一份 Agent YAML 配置，其中 `agent.module` 指向 `omnirl.algorithms.on_policy.<name>` 或 `omnirl.algorithms.off_policy.<name>`，`modules` 部分提供各组件的构造参数。
@@ -195,7 +195,7 @@ __all__ = ["EnvAdapter", "EnvProvider", "CollectionLoop", "EvaluationLoop"]
 - `EnvAdapter`：继承 `omnirl.envs.base` 中的 `BaseEnv`，封装具体环境。`reset()` 重置环境，`step()` 执行动作，`render()` 渲染画面，`close()` 关闭环境。
 - `EnvProvider`：继承 `BaseEnvProvider`，`build(env_config, role=None)` 根据配置创建环境，`get_spec(env_config)` 返回观测维度、动作范围等信息。
 - `CollectionLoop`：继承 `BaseCollectionLoop`，通过 `run(policy, num_steps)` 在每个环境中采样指定步数，并返回训练数据。
-- `EvaluationLoop`：继承 `BaseEvaluationLoop`，通过 `run(policy, num_episodes_per_evaluator)` 评估策略，通过 `aggregate(eval_infos)` 汇总各评估进程的结果。`default_metrics` 保存各项评估指标的初始值。
+- `EvaluationLoop`：继承 `BaseEvaluationLoop`，通过 `run(policy, num_episodes_per_env)` 在每个环境中完成指定回合数的评估，通过 `aggregate(eval_infos)` 汇总各评估进程的结果。`default_metrics` 保存各项评估指标的初始值。
 
 在 Runner 配置中指定环境模块：
 

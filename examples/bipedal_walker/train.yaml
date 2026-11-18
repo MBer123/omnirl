@@ -25,7 +25,8 @@ sampler:
 
 evaluator:
   num_evaluators: 1
-  num_episodes_per_evaluator: 5
+  num_envs_per_evaluator: 1
+  num_episodes_per_env: 5
   num_evaluator_gpus: 0
   num_evaluators_per_gpu: 1
 

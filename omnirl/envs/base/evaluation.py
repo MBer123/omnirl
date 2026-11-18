@@ -7,8 +7,8 @@ class BaseEvaluationLoop(ABC):
     default_metrics = {}
 
     @abstractmethod
-    def run(self, policy, num_episodes_per_evaluator: int) -> dict:
-        """Return backend-specific evaluation results for aggregation."""
+    def run(self, policy, num_episodes_per_env: int) -> dict:
+        """Evaluate episodes per environment and return results for aggregation."""
         raise NotImplementedError
 
     @staticmethod

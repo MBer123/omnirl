@@ -10,8 +10,8 @@ class BasePolicy(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def choose_action(self, observation):
-        """Return a deterministic environment action for one observation."""
+    def choose_action(self, observations):
+        """Return deterministic environment actions for a batch of observations."""
         raise NotImplementedError
 
     @abstractmethod

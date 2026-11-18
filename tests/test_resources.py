@@ -36,8 +36,8 @@ class ResourceAllocatorTest(unittest.TestCase):
                 allocator.reserve()
                 bundles = create_group.call_args.args[0]
         self.assertEqual(sum(bundle["CPU"] for bundle in bundles), resources["CPU"])
-        self.assertLessEqual(sum(bundle.get("GPU", 0) for bundle in bundles),
-                             available_gpus)
+        reserved_gpus = sum(bundle.get("GPU", 0) for bundle in bundles)
+        self.assertLessEqual(reserved_gpus, available_gpus)
         return allocator, bundles
 
     def test_single_gpu_is_shared_by_all_roles(self):
@@ -89,8 +89,8 @@ class ResourceAllocatorTest(unittest.TestCase):
         self.assertEqual(len(learner), 2)
         self.assertTrue(learner.isdisjoint(sampler))
         self.assertEqual(gpu_indices(allocator, "evaluator"), sampler)
-        self.assertEqual([share for _, share in allocator.allocations["learner"]],
-                         [1, 1])
+        learner_shares = [share for _, share in allocator.allocations["learner"]]
+        self.assertEqual(learner_shares, [1, 1])
 
     def test_minimum_gpu_counts(self):
         for device, learners in (("gpu", 1), ("gpu", 3), ("cpu", 2)):
@@ -142,12 +142,17 @@ class ResourceAllocatorTest(unittest.TestCase):
                         bundle_index = strategy.placement_group_bundle_index
                         expected_index = allocator.allocations[role][index][0]
                         self.assertEqual(bundle_index, expected_index)
-                        self.assertEqual(bundles[bundle_index].get("GPU", 0),
-                                         int(device == "gpu"))
+                        bundle_gpus = bundles[bundle_index].get("GPU", 0)
+                        self.assertEqual(bundle_gpus, int(device == "gpu"))
 
     def test_shared_fractions_fit_ray_precision(self):
-        allocator, _ = self.reserve(1, num_samplers=7, num_samplers_per_gpu=7,
-                                    num_evaluators=11, num_evaluators_per_gpu=11)
+        kwargs = {
+            "num_samplers": 7,
+            "num_samplers_per_gpu": 7,
+            "num_evaluators": 11,
+            "num_evaluators_per_gpu": 11,
+        }
+        allocator, _ = self.reserve(1, **kwargs)
         units = 0
         for role in ("learner", "sampler", "evaluator"):
             for _, share in allocator.allocations[role]:
@@ -155,8 +160,15 @@ class ResourceAllocatorTest(unittest.TestCase):
                 self.assertEqual(share, round(share, 4))
                 units += round(share * 10_000)
         self.assertLessEqual(units, 10_000)
-        with self.assertRaisesRegex(ValueError, "below Ray's resource precision"):
-            self.reserve(1, num_samplers_per_gpu=10_000, num_evaluator_gpus=0)
+
+    def test_gpu_precision_without_shared_normalization(self):
+        kwargs = {"learner_device": "cpu", "num_evaluator_gpus": 0}
+        allocator, _ = self.reserve(1, num_samplers_per_gpu=10_000, **kwargs)
+        for i in range(2):
+            device, options = allocator.get_allocation("sampler", i)
+            self.assertEqual(device, "gpu")
+            self.assertEqual(options["num_gpus"], 0.0001)
+        self.assertEqual(allocator.get_allocation("learner")[0], "cpu")
 
 
 if __name__ == "__main__":

@@ -72,15 +72,15 @@ class Policy(BasePolicy):
             self.version = version
 
     @torch.no_grad()
-    def choose_action(self, observation):
-        """Select a deterministic action for evaluation."""
-        observation = np.asarray(observation, dtype=np.float32)
-        state = torch.as_tensor(observation, device=self.device).unsqueeze(0)
+    def choose_action(self, observations):
+        """Select deterministic actions for a batch of observations."""
+        observations = np.asarray(observations, dtype=np.float32)
+        state = torch.as_tensor(observations, device=self.device)
 
         action = self.actor(state)
         action = action * self.action_scale + self.action_bias
 
-        return action.squeeze(0).cpu().numpy()
+        return action.cpu().numpy()
 
     @torch.no_grad()
     def sample_action(self, observations):

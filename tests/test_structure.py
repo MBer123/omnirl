@@ -1,5 +1,6 @@
 import importlib
 import inspect
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import DEFAULT, Mock, patch
@@ -77,6 +78,8 @@ class StructureTest(unittest.TestCase):
                 self.assertEqual(evaluation_runner["ckpt_dir"], expected_ckpt_dir)
                 expected_model = f"agent_{train_runner['max_updates']}.pth"
                 self.assertEqual(evaluation_runner["eval_model"], expected_model)
+                self.assertEqual(train["evaluator"]["num_envs_per_evaluator"], 1)
+                self.assertEqual(evaluation["evaluator"]["num_envs_per_evaluator"], 1)
 
     def test_config_module_paths(self):
         paths = list(CONFIG_ROOT.rglob("*.yaml"))
@@ -129,8 +132,13 @@ class StructureTest(unittest.TestCase):
                         self.assertLessEqual(kwargs, params)
                 else:
                     allowed_fields = {
-                        "env", "runner", "learner", "sampler", "evaluator",
-                        "memory", "seed",
+                        "env",
+                        "runner",
+                        "learner",
+                        "sampler",
+                        "evaluator",
+                        "memory",
+                        "seed",
                     }
                     self.assertLessEqual(set(config), allowed_fields)
                     env_fields = set(config["env"])
@@ -159,7 +167,11 @@ class StructureTest(unittest.TestCase):
             num_samplers_per_gpu=4,
         )
         evaluator_config = runner_config["evaluator"]
-        evaluator_config.update(num_evaluator_gpus=1, num_evaluators_per_gpu=2)
+        evaluator_config.update(
+            num_envs_per_evaluator=4,
+            num_evaluator_gpus=1,
+            num_evaluators_per_gpu=2,
+        )
 
         agent = object()
         environment = object()
@@ -178,7 +190,8 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(captured_kwargs["num_envs_per_sampler"], 4)
         self.assertEqual(captured_kwargs["collection_fragment_length"], 8)
         self.assertEqual(captured_kwargs["num_evaluators"], 1)
-        self.assertEqual(captured_kwargs["num_episodes_per_evaluator"], 5)
+        self.assertEqual(captured_kwargs["num_envs_per_evaluator"], 4)
+        self.assertEqual(captured_kwargs["num_episodes_per_env"], 5)
         self.assertEqual(captured_kwargs["num_buffers"], 2)
         self.assertEqual(captured_kwargs["learner_device"], "gpu")
         self.assertEqual(captured_kwargs["num_sampler_gpus"], 2)
@@ -190,6 +203,30 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(captured_kwargs["evaluator_seed"], 0)
         expected_learner_config = {"num_learners": 1, "learner_device": "gpu"}
         self.assertEqual(runner_config["learner"], expected_learner_config)
+
+    def test_training_entry_saves_run_config(self):
+        with patch.dict("os.environ"):
+            entry = importlib.import_module("run")
+        example_dir = CONFIG_ROOT / "cartpole"
+        args = Mock(
+            mode="train",
+            runner_config=example_dir / "train.yaml",
+            agent_config=example_dir / "ppo.yaml",
+        )
+        runner_config = entry.load_yaml(args.runner_config)
+        agent_config = entry.load_yaml(args.agent_config)
+        expected_config = {**agent_config, **runner_config}
+
+        with tempfile.TemporaryDirectory() as ckpt_dir:
+            runner = Mock(spec=["ckpt_path", "fit"])
+            runner.ckpt_path = str(Path(ckpt_dir) / "checkpoint.ckpt")
+            with patch.object(entry, "parse_args", return_value=args):
+                with patch.object(Runner, "from_config", return_value=runner):
+                    entry.main()
+            config_path = Path(ckpt_dir) / "run_config.yaml"
+            saved_config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(saved_config, expected_config)
+            runner.fit.assert_called_once_with()
 
     def test_evaluation_config_loading(self):
         config_path = CONFIG_ROOT / "cartpole" / "test.yaml"
@@ -203,7 +240,8 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(captured_kwargs["eval_model"], "agent_100.pth")
         self.assertNotIn("num_samplers", captured_kwargs)
         self.assertEqual(captured_kwargs["num_evaluators"], 1)
-        self.assertEqual(captured_kwargs["num_episodes_per_evaluator"], 10)
+        self.assertEqual(captured_kwargs["num_envs_per_evaluator"], 1)
+        self.assertEqual(captured_kwargs["num_episodes_per_env"], 10)
         self.assertEqual(captured_kwargs["num_evaluator_gpus"], 0)
         self.assertEqual(captured_kwargs["num_evaluators_per_gpu"], 1)
         self.assertEqual(captured_kwargs["evaluator_seed"], 0)
@@ -278,6 +316,8 @@ class StructureTest(unittest.TestCase):
                         "num_learners": 2,
                         "num_samplers": 5,
                         "num_evaluators": 3,
+                        "num_envs_per_evaluator": 4,
+                        "evaluator_seed": 7,
                         "learner_device": device,
                         "num_sampler_gpus": sampler[0],
                         "num_samplers_per_gpu": sampler[1],
@@ -287,6 +327,10 @@ class StructureTest(unittest.TestCase):
                     if device is None:
                         runner_kwargs.pop("learner_device")
                     runner = Runner(**runner_kwargs)
+                    create_evaluator = mocks["Evaluator"].options.return_value.remote
+                    for i, call in enumerate(create_evaluator.call_args_list):
+                        self.assertEqual(call.kwargs["num_envs_per_evaluator"], 4)
+                        self.assertEqual(call.kwargs["seed"], 2007 + i * 4)
                     bundle_specs, sampler_indices, evaluator_indices = expected
                     bundles = []
                     for cpus, gpus in bundle_specs:
