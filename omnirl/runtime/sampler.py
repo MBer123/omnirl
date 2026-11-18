@@ -63,8 +63,9 @@ class Sampler:
     def _sync_weights(self, weight_store):
         """Fetch and load newer policy weights from the weight store."""
         result = ray.get(weight_store.get.remote(self.version))
-        weights = result["weights"]
-        if weights is not None:
+        weights_ref = result["weights_ref"]
+        if weights_ref is not None:
+            weights = ray.get(weights_ref)
             self.version = result["version"]
             self.policy.set_weights(weights, self.version)
 

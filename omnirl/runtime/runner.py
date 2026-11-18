@@ -160,10 +160,10 @@ class Runner:
 
         # Initialize weight store
         _, options = self.resources.get_allocation("weight_store")
-        init_weight = ray.get(self.learner.get_weights.remote())
+        init_weights_ref = self.learner.get_weights.remote()
         init_version = ray.get(self.learner.get_version.remote())
         weight_store = WeightStore.options(**options)
-        self.weight_store = weight_store.remote(init_weight, init_version)
+        self.weight_store = weight_store.remote([init_weights_ref], init_version)
 
         # Initialize samplers
         self.samplers = []
@@ -316,8 +316,8 @@ class Runner:
             results = ray.get(remote)[0]
 
             self.version = results["version"]
-            weights = results["weights"]
-            ray.get(self.weight_store.set.remote(weights, self.version))
+            weights_ref = ray.put(results["weights"])
+            ray.get(self.weight_store.set.remote([weights_ref], self.version))
 
             self._log_str("RESUME FROM CHECKPOINT")
 
@@ -332,15 +332,15 @@ class Runner:
         while not self.stop_event.is_set() or not is_train:
             results = ray.get(self.weight_store.get.remote(self.eval_version))
             version = results["version"]
-            weights = results["weights"]
+            weights_ref = results["weights_ref"]
 
-            if weights is None:
+            if weights_ref is None:
                 self.stop_event.wait(1.0)
                 continue
 
             eval_refs = []
             for evaluator in self.evaluators:
-                eval_refs.append(evaluator.evaluate.remote(weights, version))
+                eval_refs.append(evaluator.evaluate.remote(weights_ref, version))
             eval_infos = ray.get(eval_refs)
 
             avg_info = {"version": version, **self.aggregate_evaluations(eval_infos)}
@@ -399,7 +399,7 @@ class Runner:
         self.version = train_info["version"]
         self.trained_samples += sum(info["trained_samples"] for info in infos)
 
-        self.weight_store.set.remote(weights_ref, self.version)
+        self.weight_store.set.remote([weights_ref], self.version)
         num_buffers = len(self.memories)
         for i, memory in enumerate(self.memories):
             memory_infos = [info["memory"] for info in infos[i::num_buffers]]

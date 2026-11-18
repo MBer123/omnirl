@@ -1,6 +1,7 @@
 import tempfile
 import threading
 import unittest
+from unittest.mock import Mock
 
 import numpy as np
 import ray
@@ -9,6 +10,7 @@ import torch
 from omnirl.buffers import PrioritizedReplayBuffer, ReplayBuffer, RolloutBuffer
 from omnirl.envs.gymnasium import EvaluationLoop
 from omnirl.runtime.runner import Runner
+from omnirl.runtime.sampler import Sampler
 from omnirl.runtime.weight_store import WeightStore
 
 
@@ -26,11 +28,16 @@ class MetricEvaluator:
         self.num_episodes = num_episodes
 
     def evaluate(self, weights, version):
+        self.weight = weights["weight"].item()
         return {
             "version": version,
             "num_episodes": self.num_episodes,
             "metrics": self.metrics,
         }
+
+    def get_weight(self):
+        """Return the weight received by the evaluator."""
+        return self.weight
 
 
 class RuntimeTest(unittest.TestCase):
@@ -44,21 +51,78 @@ class RuntimeTest(unittest.TestCase):
 
     def test_weight_store(self):
         weights = {"weight": torch.tensor([1.0])}
-        store = WeightStore.remote(weights, 0)
+        weights_ref = ray.put(weights)
+        store = WeightStore.remote([weights_ref], 0)
+        self.addCleanup(ray.kill, store)
 
-        self.assertIsNone(ray.get(store.get.remote(0))["weights"])
-        ray.get(store.set.remote({"weight": torch.tensor([2.0])}, 1))
+        initial_result = ray.get(store.get.remote(-1))
+        self.assertEqual(initial_result["weights_ref"], weights_ref)
+        self.assertIsNone(ray.get(store.get.remote(0))["weights_ref"])
+        del weights_ref
 
-        result = ray.get(store.get.remote(0))
-        self.assertEqual(result["version"], 1)
-        self.assertEqual(result["weights"]["weight"].item(), 2.0)
+        updated_ref = ray.put({"weight": torch.tensor([2.0])})
+        ray.get(store.set.remote([updated_ref], 1))
+        results = ray.get([store.get.remote(0) for _ in range(2)])
+        for result in results:
+            self.assertEqual(result["version"], 1)
+            self.assertIsInstance(result["weights_ref"], ray.ObjectRef)
+            self.assertEqual(result["weights_ref"], updated_ref)
+            weights = ray.get(result["weights_ref"])
+            self.assertEqual(weights["weight"].item(), 2.0)
+        self.assertIsNone(ray.get(store.get.remote(1))["weights_ref"])
+        initial_weights = ray.get(initial_result["weights_ref"])
+        self.assertEqual(initial_weights["weight"].item(), 1.0)
+
+    def test_sampler_sync_weights(self):
+        weights = {"weight": torch.tensor([2.0])}
+        weights_ref = ray.put(weights)
+        store = WeightStore.remote([weights_ref], 1)
+        self.addCleanup(ray.kill, store)
+        sampler_class = Sampler.__ray_metadata__.modified_class
+        sampler = sampler_class.__new__(sampler_class)
+        sampler.policy = Mock()
+        sampler.version = -1
+
+        sampler._sync_weights(store)
+
+        loaded_weights, version = sampler.policy.set_weights.call_args.args
+        torch.testing.assert_close(loaded_weights["weight"], weights["weight"])
+        self.assertEqual(version, 1)
+        self.assertEqual(sampler.version, 1)
+        sampler._sync_weights(store)
+        sampler.policy.set_weights.assert_called_once()
+
+    def test_checkpoint_weight_store(self):
+        weights = {"weight": torch.tensor([3.0])}
+        checkpoint_result = {"version": 7, "weights": weights}
+        learner = Mock()
+        learner.load_checkpoint.remote.return_value = ray.put(checkpoint_result)
+        initial_ref = ray.put({"weight": torch.tensor([1.0])})
+        runner = Runner.__new__(Runner)
+        runner.load_checkpoint = True
+        runner.learners = [learner]
+        runner.log = Mock()
+        runner.weight_store = WeightStore.remote([initial_ref], 0)
+        self.addCleanup(ray.kill, runner.weight_store)
+
+        with tempfile.NamedTemporaryFile() as checkpoint:
+            runner.ckpt_path = checkpoint.name
+            runner._load_checkpoint()
+
+        result = ray.get(runner.weight_store.get.remote(0))
+        self.assertEqual(runner.version, 7)
+        self.assertEqual(result["version"], 7)
+        self.assertIsInstance(result["weights_ref"], ray.ObjectRef)
+        restored_weights = ray.get(result["weights_ref"])
+        torch.testing.assert_close(restored_weights["weight"], weights["weight"])
 
     def test_evaluation_metrics(self):
         runner = Runner.__new__(Runner)
         runner.stop_event = threading.Event()
         runner.eval_version = -1
         runner.latest_eval_info = {}
-        runner.weight_store = WeightStore.remote({"weight": torch.tensor([1.0])}, 0)
+        weights_ref = ray.put({"weight": torch.tensor([1.0])})
+        runner.weight_store = WeightStore.remote([weights_ref], 0)
         first_metrics = {
             "return_mean": 2.0,
             "return_std": 1.0,
@@ -84,6 +148,8 @@ class RuntimeTest(unittest.TestCase):
         self.assertAlmostEqual(result["return_std"], (8 / 3) ** 0.5)
         self.assertEqual(result["return_max"], 5.0)
         self.assertEqual(result["return_min"], 1.0)
+        weight_refs = [evaluator.get_weight.remote() for evaluator in runner.evaluators]
+        self.assertEqual(ray.get(weight_refs), [1.0, 1.0])
 
     def test_replay_buffer(self):
         memory_kwargs = {
