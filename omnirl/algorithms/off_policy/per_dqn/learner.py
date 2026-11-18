@@ -185,6 +185,7 @@ class Learner(BaseLearner):
             "memory": {
                 "td_errors": td_errors.detach().cpu().numpy(),
                 "indices": batch["indices"],
+                "generations": batch["generations"],
             },
             "version": self.get_version(),
             "trained_samples": int(batch_size),

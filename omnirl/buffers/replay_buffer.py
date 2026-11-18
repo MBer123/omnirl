@@ -220,6 +220,11 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.max_priority = 1.0
 
         self.priority_memory = np.zeros(max_size, dtype=np.float32)
+        self.generation_memory = np.zeros(max_size, dtype=np.int64)
+
+        self.tree_capacity = 1 << (max_size - 1).bit_length()
+        self.sum_tree = np.zeros(2 * self.tree_capacity, dtype=np.float64)
+        self.min_tree = np.full(2 * self.tree_capacity, np.inf, dtype=np.float64)
 
     def add(self, rollout):
         """Store a rollout and initialize priorities for the written slots."""
@@ -227,26 +232,48 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
         size = min(rollout["rewards"].size, self.max_size)
         start = (self.collected_size - size) % self.max_size
-        end = min(start + size, self.max_size)
-        remaining_size = size - (end - start)
+        indices = (start + np.arange(size)) % self.max_size
+        self.generation_memory[indices] += 1
+        priorities = np.full(size, self.max_priority, dtype=np.float32)
+        self._update_priorities(indices, priorities)
 
-        self.priority_memory[start:end] = self.max_priority
-        self.priority_memory[:remaining_size] = self.max_priority
+    def _update_priorities(self, indices, priorities):
+        """Update unique slots and their ancestors in both priority trees."""
+        self.priority_memory[indices] = priorities
+        nodes = indices + self.tree_capacity
+        scaled_priorities = priorities.astype(np.float64) ** self.alpha
+        self.sum_tree[nodes] = scaled_priorities
+        self.min_tree[nodes] = scaled_priorities
+
+        nodes = np.unique(nodes // 2)
+        while nodes.size and nodes[0] > 0:
+            left = 2 * nodes
+            right = left + 1
+            self.sum_tree[nodes] = self.sum_tree[left] + self.sum_tree[right]
+            self.min_tree[nodes] = np.minimum(self.min_tree[left], self.min_tree[right])
+            nodes = np.unique(nodes // 2)
 
     def _sample(self, size):
-        """Sample by priority and return indices and importance weights."""
-        priorities = self.priority_memory[: self.available_size]
-        scaled_priorities = priorities**self.alpha
-        total = scaled_priorities.sum()
-        probs = scaled_priorities / total
+        """Sample by priority and return slot versions and importance weights."""
+        total = self.sum_tree[1]
+        masses = self.rng.random(size) * total
+        masses = np.minimum(masses, np.nextafter(total, 0.0))
+        nodes = np.ones(size, dtype=np.int64)
+        for _ in range(self.tree_capacity.bit_length() - 1):
+            nodes *= 2
+            left_sums = self.sum_tree[nodes]
+            go_right = masses >= left_sums
+            masses -= np.where(go_right, left_sums, 0.0)
+            nodes += go_right
+            masses = np.minimum(masses, np.nextafter(self.sum_tree[nodes], 0.0))
 
-        indices = np.random.choice(self.available_size, size, replace=True, p=probs)
-
-        weights = (self.available_size * probs[indices]) ** (-self.beta)
-        max_weight = (self.available_size * probs.min()) ** (-self.beta)
-        weights /= max_weight
-
-        return indices, {"indices": indices, "weights": weights.astype(np.float32)}
+        indices = nodes - self.tree_capacity
+        weights = (self.sum_tree[nodes] / self.min_tree[1]) ** (-self.beta)
+        return indices, {
+            "indices": indices,
+            "generations": self.generation_memory[indices],
+            "weights": weights.astype(np.float32),
+        }
 
     def on_learn(self, train_infos):
         """Update internal state after the learner finishes one training step."""
@@ -258,14 +285,20 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.beta = self.beta_start + progress * (1.0 - self.beta_start)
 
         indices = np.concatenate([info["indices"] for info in train_infos], axis=0)
+        generations = np.concatenate([info["generations"] for info in train_infos])
         td_errors = np.concatenate([info["td_errors"] for info in train_infos], axis=0)
 
         indices = indices.reshape(-1)
-        priorities = np.abs(td_errors).reshape(-1) + 1e-6
+        current = generations.reshape(-1) == self.generation_memory[indices]
+        indices = indices[current]
+        priorities = np.abs(td_errors).reshape(-1)[current] + 1e-6
+        if indices.size == 0:
+            return
+
         unique_indices, inverse = np.unique(indices, return_inverse=True)
         unique_priorities = np.zeros(unique_indices.size, dtype=np.float32)
         np.maximum.at(unique_priorities, inverse, priorities)
-        self.priority_memory[unique_indices] = unique_priorities
+        self._update_priorities(unique_indices, unique_priorities)
 
         batch_max_priority = unique_priorities.max()
         if batch_max_priority > self.max_priority:

@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import Mock
 
 import numpy as np
 
@@ -106,6 +107,7 @@ class ReplayBufferTest(unittest.TestCase):
                                         td_errors = np.ones(len(batch["rewards"]))
                                         learn_info = {
                                             "indices": indices,
+                                            "generations": batch.get("generations"),
                                             "td_errors": td_errors,
                                         }
                                         learn_infos.append(learn_info)
@@ -136,7 +138,11 @@ class ReplayBufferTest(unittest.TestCase):
                 memory.add(make_rollout(0, 5))
                 self.assertFalse(memory.ready())
                 self.assertIsNone(memory.get_batch(0, 1))
-                learn_info = {"indices": np.arange(5), "td_errors": np.arange(1, 6)}
+                learn_info = {
+                    "indices": np.arange(5),
+                    "generations": np.ones(5, dtype=np.int64),
+                    "td_errors": np.arange(1, 6),
+                }
                 memory.on_learn([learn_info])
                 self.assertEqual(memory.replayed_size, 5)
 
@@ -189,10 +195,148 @@ class ReplayBufferTest(unittest.TestCase):
                     if isinstance(memory, PrioritizedReplayBuffer):
                         np.testing.assert_array_equal(batch["indices"], rewards)
                         np.testing.assert_allclose(batch["weights"], np.ones(size))
+                        expected_generations = np.ones(size, dtype=np.int64)
+                        generations = batch["generations"]
+                        np.testing.assert_array_equal(generations, expected_generations)
                     else:
                         self.assertEqual(np.unique(batch["rewards"]).size, size)
                         self.assertNotIn("weights", batch)
                         self.assertNotIn("indices", batch)
+                        self.assertNotIn("generations", batch)
+
+    def test_prioritized_sampling_probabilities_and_weights(self):
+        for alpha in (0.0, 0.6, 1.0):
+            for capacity, count in ((1, 1), (5, 3), (5, 5)):
+                with self.subTest(alpha=alpha, capacity=capacity, count=count):
+                    memory_kwargs = {
+                        "state_dim": 1,
+                        "state_dtype": np.float32,
+                        "action_dim": 2,
+                        "is_continuous": True,
+                        "batch_size": 1,
+                        "max_size": capacity,
+                        "alpha": alpha,
+                    }
+                    memory = PrioritizedReplayBuffer(**memory_kwargs)
+                    memory.rng = np.random.default_rng(7)
+                    memory.add(make_rollout(0, count))
+                    errors = np.arange(1, count + 1, dtype=np.float32)
+                    learn_info = {
+                        "indices": np.arange(count),
+                        "generations": np.ones(count, dtype=np.int64),
+                        "td_errors": errors,
+                    }
+                    memory.on_learn([learn_info])
+
+                    indices, sample_info = memory._sample(30000)
+                    self.assertTrue(np.all(indices < count))
+                    scaled_priorities = (errors + 1e-6).astype(np.float64) ** alpha
+                    probabilities = scaled_priorities / scaled_priorities.sum()
+                    frequencies = np.bincount(indices, minlength=count) / indices.size
+                    np.testing.assert_allclose(frequencies, probabilities, atol=0.01)
+                    expected_weights = probabilities[indices] / probabilities.min()
+                    expected_weights = expected_weights ** (-memory.beta)
+                    weights = sample_info["weights"]
+                    np.testing.assert_allclose(weights, expected_weights, rtol=1e-6)
+                    self.assertEqual(weights.dtype, np.float32)
+
+                    empty_indices, empty_info = memory._sample(0)
+                    self.assertEqual(empty_indices.size, 0)
+                    self.assertEqual(empty_info["weights"].size, 0)
+                    self.assertEqual(empty_info["generations"].size, 0)
+
+    def test_prioritized_sampling_roundoff_cannot_select_padding(self):
+        memory_kwargs = {
+            "state_dim": 1,
+            "state_dtype": np.float32,
+            "action_dim": 2,
+            "is_continuous": True,
+            "batch_size": 1,
+            "max_size": 3,
+            "alpha": 1.0,
+        }
+        memory = PrioritizedReplayBuffer(**memory_kwargs)
+        memory.add(make_rollout(0, 3))
+        errors = np.array([2**34, 1 + 3 * 2**-17, 5 * 2**34], dtype=np.float32)
+        learn_info = {
+            "indices": np.arange(3),
+            "generations": np.ones(3, dtype=np.int64),
+            "td_errors": errors,
+        }
+        memory.on_learn([learn_info])
+        memory.rng = Mock()
+        memory.rng.random.return_value = np.array([np.nextafter(1.0, 0.0)])
+
+        indices, sample_info = memory._sample(1)
+
+        np.testing.assert_array_equal(indices, [2])
+        self.assertTrue(np.all(np.isfinite(sample_info["weights"])))
+        self.assertTrue(np.all(sample_info["weights"] > 0))
+
+    def test_prioritized_updates_filter_stale_rows_before_duplicate_reduction(self):
+        memory_kwargs = {
+            "state_dim": 1,
+            "state_dtype": np.float32,
+            "action_dim": 2,
+            "is_continuous": True,
+            "batch_size": 5,
+            "max_size": 5,
+            "alpha": 1.0,
+        }
+        memory = PrioritizedReplayBuffer(**memory_kwargs)
+        memory.add(make_rollout(0, 5))
+        old_info = {
+            "indices": np.array([0, 1, 3]),
+            "generations": np.ones(3, dtype=np.int64),
+            "td_errors": np.array([99, 98, 4], dtype=np.float32),
+        }
+        memory.add(make_rollout(5, 2))
+        new_info = {
+            "indices": np.array([0, 0, 1, 3]),
+            "generations": np.array([2, 2, 2, 1], dtype=np.int64),
+            "td_errors": np.array([2, 3, -5, 2], dtype=np.float32),
+        }
+        memory.on_learn([old_info, new_info])
+
+        expected_priorities = np.array([3, 5, 1, 4, 1], dtype=np.float32)
+        expected_priorities[[0, 1, 3]] += 1e-6
+        np.testing.assert_allclose(memory.priority_memory, expected_priorities)
+        self.assertAlmostEqual(memory.max_priority, 5 + 1e-6)
+        self.assertAlmostEqual(memory.sum_tree[1], expected_priorities.sum(), places=5)
+        self.assertEqual(memory.min_tree[1], 1)
+        indices, sample_info = memory._sample(100)
+        expected_weights = expected_priorities[indices] ** (-memory.beta)
+        np.testing.assert_allclose(sample_info["weights"], expected_weights, rtol=1e-6)
+
+    def test_prioritized_oversized_rollout_invalidates_sampled_generations(self):
+        memory_kwargs = {
+            "state_dim": 1,
+            "state_dtype": np.float32,
+            "action_dim": 2,
+            "is_continuous": True,
+            "batch_size": 5,
+            "max_size": 5,
+            "beta_anneal_steps": 2,
+        }
+        memory = PrioritizedReplayBuffer(**memory_kwargs)
+        memory.add(make_rollout(0, 5))
+        batch = memory.get_batch(0, 1)
+        memory.add(make_rollout(5, 12))
+        np.testing.assert_array_equal(batch["generations"], np.ones(5, dtype=np.int64))
+        np.testing.assert_array_equal(memory.generation_memory, np.full(5, 2))
+        learn_info = {
+            "indices": batch["indices"],
+            "generations": batch["generations"],
+            "td_errors": np.full(5, 1000, dtype=np.float32),
+        }
+        memory.on_learn([learn_info])
+
+        np.testing.assert_array_equal(memory.priority_memory, np.ones(5))
+        self.assertEqual(memory.max_priority, 1)
+        self.assertEqual(memory.sum_tree[1], 5)
+        self.assertEqual(memory.min_tree[1], 1)
+        self.assertEqual(memory.replayed_size, 5)
+        self.assertAlmostEqual(memory.beta, 0.7)
 
 
 if __name__ == "__main__":

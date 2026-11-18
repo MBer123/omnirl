@@ -221,6 +221,7 @@ class RuntimeTest(unittest.TestCase):
         np.testing.assert_array_equal(batch["hidden_state"], expected_hidden_states)
         learn_info = {
             "indices": batch["indices"],
+            "generations": batch["generations"],
             "td_errors": np.ones(2, dtype=np.float32),
         }
         ray.get(memory.on_learn.remote([learn_info]))
@@ -251,6 +252,7 @@ class RuntimeTest(unittest.TestCase):
         priorities = np.asarray([1, 2, 3, 4], dtype=np.float32) + 1e-6
         learn_info = {
             "indices": np.arange(4),
+            "generations": np.ones(4, dtype=np.int64),
             "td_errors": priorities - 1e-6,
         }
         ray.get(weighted_memory.on_learn.remote([learn_info]))
@@ -272,9 +274,19 @@ class RuntimeTest(unittest.TestCase):
             "max_size": 4,
         }
         memory = buffer_class(**memory_kwargs)
+        rollout = {
+            "states": np.zeros((1, 2, 1), dtype=np.float32),
+            "next_states": np.ones((1, 2, 1), dtype=np.float32),
+            "rewards": np.zeros((1, 2), dtype=np.float32),
+            "terminals": np.zeros((1, 2), dtype=np.bool_),
+            "action": np.zeros((1, 2), dtype=np.int64),
+            "extra_data": {},
+        }
+        memory.add(rollout)
 
         learn_info = {
             "indices": np.asarray([1, 1]),
+            "generations": np.ones(2, dtype=np.int64),
             "td_errors": np.asarray([3.0, 1.0], dtype=np.float32),
         }
         memory.on_learn([learn_info])
