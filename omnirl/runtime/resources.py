@@ -11,6 +11,7 @@ class ResourceAllocator:
         num_learners: Number of learner actors.
         num_samplers: Number of sampler actors.
         num_evaluators: Number of evaluator actors.
+        num_buffers: Number of buffer actors.
         learner_device: Device selector used to run learners.
         num_sampler_gpus: Number of GPUs used by samplers, shared when needed.
         num_samplers_per_gpu: Maximum number of samplers sharing each GPU.
@@ -23,6 +24,7 @@ class ResourceAllocator:
         num_learners: int,
         num_samplers: int,
         num_evaluators: int,
+        num_buffers: int,
         learner_device: str,
         num_sampler_gpus: int,
         num_samplers_per_gpu: int,
@@ -30,11 +32,10 @@ class ResourceAllocator:
         num_evaluators_per_gpu: int,
     ):
         # Check CPU availability
-        num_buffer = 1
         num_weight_store = 1
         available_resources = ray.available_resources()
         num_workers = num_learners + num_samplers + num_evaluators
-        requested_cpus = num_workers + num_weight_store + num_buffer
+        requested_cpus = num_workers + num_weight_store + num_buffers
         if requested_cpus > available_resources.get("CPU", 0):
             raise ValueError("Not enough CPUs available for the current configuration.")
 
@@ -53,7 +54,7 @@ class ResourceAllocator:
             "learner": (num_gpus, num_learners, 1),
             "sampler": (num_sampler_gpus, num_samplers, num_samplers_per_gpu),
             "evaluator": (num_evaluator_gpus, num_evaluators, num_evaluators_per_gpu),
-            "memory": (0, 1, 0),
+            "memory": (0, num_buffers, 0),
             "weight_store": (0, 1, 0),
         }
 

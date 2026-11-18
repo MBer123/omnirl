@@ -129,14 +129,15 @@ class StructureTest(unittest.TestCase):
                         self.assertLessEqual(kwargs, params)
                 else:
                     allowed_fields = {
-                        "env", "runner", "learner", "sampler", "evaluator", "seed"
+                        "env", "runner", "learner", "sampler", "evaluator",
+                        "memory", "seed",
                     }
                     self.assertLessEqual(set(config), allowed_fields)
                     env_fields = set(config["env"])
                     self.assertIn("module", env_fields)
                     self.assertNotIn("role", env_fields)
                     self.assertLessEqual(set(config["runner"]), runner_params)
-                    for role in ("learner", "sampler", "evaluator"):
+                    for role in ("learner", "sampler", "evaluator", "memory"):
                         fields = set(config.get(role) or {})
                         if role == "learner" and "device" in fields:
                             fields.remove("device")
@@ -154,6 +155,7 @@ class StructureTest(unittest.TestCase):
         with (example_dir / "ppo.yaml").open("r", encoding="utf-8") as file:
             agent_config = yaml.safe_load(file)
         runner_config["learner"]["device"] = "gpu"
+        runner_config["memory"]["num_buffers"] = 2
         runner_config["sampler"].update(
             collection_fragment_length=8,
             num_sampler_gpus=2,
@@ -180,6 +182,7 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(captured_kwargs["collection_fragment_length"], 8)
         self.assertEqual(captured_kwargs["num_evaluators"], 1)
         self.assertEqual(captured_kwargs["num_episodes_per_evaluator"], 5)
+        self.assertEqual(captured_kwargs["num_buffers"], 2)
         self.assertEqual(captured_kwargs["learner_device"], "gpu")
         self.assertEqual(captured_kwargs["num_sampler_gpus"], 2)
         self.assertEqual(captured_kwargs["num_samplers_per_gpu"], 4)

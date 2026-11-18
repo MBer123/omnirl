@@ -29,6 +29,9 @@ evaluator:
   num_evaluator_gpus: 0
   num_evaluators_per_gpu: 1
 
+memory:
+  num_buffers: 1
+
 seed:
   learner: 0
   sampler: 0

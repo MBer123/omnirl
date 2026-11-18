@@ -15,6 +15,7 @@ class ResourceAllocatorTest(unittest.TestCase):
             "num_learners": 1,
             "num_samplers": 2,
             "num_evaluators": 2,
+            "num_buffers": 1,
             "learner_device": "gpu",
             "num_sampler_gpus": 1,
             "num_samplers_per_gpu": 2,
@@ -25,7 +26,8 @@ class ResourceAllocatorTest(unittest.TestCase):
         actor_counts = [
             kwargs[f"num_{role}s"] for role in ("learner", "sampler", "evaluator")
         ]
-        resources = {"CPU": sum(actor_counts) + 2, "GPU": available_gpus}
+        num_cpus = sum(actor_counts) + kwargs.get("num_buffers", 1) + 1
+        resources = {"CPU": num_cpus, "GPU": available_gpus}
         target = "omnirl.runtime.resources"
         with patch(f"{target}.ray.available_resources", return_value=resources):
             with patch(f"{target}.placement_group") as create_group:
@@ -45,6 +47,13 @@ class ResourceAllocatorTest(unittest.TestCase):
         self.assertEqual(bundles[0], {"CPU": 5, "GPU": 1})
         for role in ("memory", "weight_store"):
             self.assertEqual(allocator.get_allocation(role)[0], "cpu")
+
+    def test_multiple_buffers_reserve_separate_cpus(self):
+        allocator, bundles = self.reserve(1, num_buffers=2)
+        self.assertEqual(len(allocator.allocations["memory"]), 2)
+        for index, share in allocator.allocations["memory"]:
+            self.assertEqual(bundles[index], {"CPU": 1})
+            self.assertEqual(share, 0)
 
     def test_free_cards_precede_sharing(self):
         allocator, _ = self.reserve(3)

@@ -3,14 +3,14 @@ import unittest
 
 import ray
 
-from omnirl.algorithms.off_policy import dqn
+from omnirl.algorithms.off_policy import dqn, per_dqn
 from omnirl.envs import gymnasium
 from omnirl.algorithms.on_policy import ppo
 from omnirl.runtime.runner import Runner
 
 
 class IntegrationTest(unittest.TestCase):
-    def test_dqn_runner_one_update(self):
+    def test_replay_runner_updates(self):
         agent_config = {
             "learner": {"gamma": 0.99, "tau": 0.005, "lr": 0.0003},
             "memory": {
@@ -32,9 +32,16 @@ class IntegrationTest(unittest.TestCase):
 
         for num_envs, fragment_length in ((1, 1), (4, 3)):
             with self.subTest(num_envs=num_envs, fragment_length=fragment_length):
-                self.run_one_update(dqn, agent_config, num_envs, fragment_length)
+                self.run_updates(dqn, agent_config, num_envs, fragment_length)
 
-    def test_ppo_runner_one_update(self):
+        agent_config["memory"]["replay_ratio"] = 2
+        train_kwargs = {"num_envs": 2, "num_buffers": 2, "max_updates": 2}
+        for agent in (dqn, per_dqn):
+            with self.subTest(agent=agent.__name__, num_buffers=2):
+                trained_samples = self.run_updates(agent, agent_config, **train_kwargs)
+                self.assertEqual(trained_samples, 8)
+
+    def test_ppo_runner_updates(self):
         agent_config = {
             "learner": {"k_epochs": 1, "num_minibatches": 1},
             "memory": {
@@ -43,10 +50,22 @@ class IntegrationTest(unittest.TestCase):
             "network": {"layer_type": "MLP", "mlp_hidden_dims": [8, 8]},
         }
         rollout_kwargs = {"num_envs": 4, "fragment_length": 3}
-        trained_samples = self.run_one_update(ppo, agent_config, **rollout_kwargs)
+        trained_samples = self.run_updates(ppo, agent_config, **rollout_kwargs)
         self.assertEqual(trained_samples, 6)
 
-    def run_one_update(self, agent, agent_config, num_envs, fragment_length=1):
+        rollout_kwargs.update(num_buffers=2, max_updates=2)
+        trained_samples = self.run_updates(ppo, agent_config, **rollout_kwargs)
+        self.assertEqual(trained_samples, 12)
+
+    def run_updates(
+        self,
+        agent,
+        agent_config,
+        num_envs,
+        fragment_length=1,
+        num_buffers=1,
+        max_updates=1,
+    ):
         with tempfile.TemporaryDirectory() as ckpt_dir:
             runner_kwargs = {
                 "agent": agent,
@@ -54,13 +73,14 @@ class IntegrationTest(unittest.TestCase):
                 "agent_config": agent_config,
                 "env_config": {"id": "CartPole-v1"},
                 "ckpt_dir": ckpt_dir,
-                "num_learners": 1,
-                "num_samplers": 1,
+                "num_learners": num_buffers,
+                "num_samplers": num_buffers,
+                "num_buffers": num_buffers,
                 "num_envs_per_sampler": num_envs,
                 "collection_fragment_length": fragment_length,
                 "num_evaluators": 1,
                 "num_episodes_per_evaluator": 1,
-                "max_updates": 1,
+                "max_updates": max_updates,
                 "save_interval": 3600,
                 "log_interval": 3600,
                 "load_checkpoint": False,
@@ -72,7 +92,8 @@ class IntegrationTest(unittest.TestCase):
             runner = Runner(**runner_kwargs)
             try:
                 runner.fit()
-                self.assertEqual(runner.version, 1)
+                self.assertEqual(runner.version, max_updates)
+                self.assertEqual(len(runner.memories), num_buffers)
                 self.assertGreater(runner.trained_samples, 0)
                 return runner.trained_samples
             finally:

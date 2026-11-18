@@ -33,6 +33,7 @@ class Runner:
         collection_fragment_length: Steps collected per environment per transfer.
         num_evaluators: Number of evaluator actors.
         num_episodes_per_evaluator: Number of evaluation episodes per evaluator.
+        num_buffers: Buffers sharing configured batch, capacity, and warm-up sizes.
         max_updates: Maximum number of learner updates.
         prefetch_depth: Maximum number of learner updates kept in flight.
         save_interval: Time in seconds between checkpoint saves.
@@ -63,6 +64,7 @@ class Runner:
         collection_fragment_length: int = 1,
         num_evaluators: int = 1,
         num_episodes_per_evaluator: int = 10,
+        num_buffers: int = 1,
         max_updates: int = 10000000,
         prefetch_depth: int = 1,
         save_interval: int = 3600,
@@ -91,6 +93,7 @@ class Runner:
             num_learners,
             num_samplers,
             num_evaluators,
+            num_buffers,
             learner_device,
             num_sampler_gpus,
             num_samplers_per_gpu,
@@ -121,11 +124,17 @@ class Runner:
         network_kwargs = dict(agent_config.get("network") or {})
 
         # Initialize memory
-        _, options = self.resources.get_allocation("memory")
+        for name in ("batch_size", "max_size", "warmup_size"):
+            if name in memory_kwargs:
+                memory_kwargs[name] //= num_buffers
         memory_kwargs["collection_fragment_length"] = collection_fragment_length
-        self.memory = agent.Memory.options(**options)
-        self.memory = self.memory.remote(**state_spec, **memory_kwargs)
-        supports_prefetch = ray.get(self.memory.supports_prefetch.remote())
+
+        self.memories = []
+        for i in range(num_buffers):
+            _, options = self.resources.get_allocation("memory", i)
+            memory = agent.Memory.options(**options)
+            self.memories.append(memory.remote(**state_spec, **memory_kwargs))
+        supports_prefetch = ray.get(self.memories[0].supports_prefetch.remote())
 
         # Initialize learner
         self.learners = []
@@ -248,8 +257,8 @@ class Runner:
             **runner_config.get("runner", {}),
         }
 
-        # Load learner, sampler, and evaluator arguments
-        for role in ("learner", "sampler", "evaluator"):
+        # Load learner, sampler, evaluator, and memory arguments
+        for role in ("learner", "sampler", "evaluator", "memory"):
             params = dict(runner_config.get(role) or {})
             if role == "learner" and "device" in params:
                 params["learner_device"] = params.pop("device")
@@ -313,8 +322,9 @@ class Runner:
 
     def _start_samplers(self):
         """Launch asynchronous rollout tasks on all sampler actors."""
-        for sampler in self.samplers:
-            sampler.rollout.remote(self.memory, self.weight_store)
+        for i, sampler in enumerate(self.samplers):
+            memory = self.memories[i % len(self.memories)]
+            sampler.rollout.remote(memory, self.weight_store)
 
     def _start_evaluators(self, is_train=True):
         """Run evaluators in parallel and aggregate evaluation metrics."""
@@ -345,8 +355,12 @@ class Runner:
     def _submit_update(self):
         """Request batches and submit one learner update without waiting for it."""
         batch_refs = []
+        num_buffers = len(self.memories)
+        world_size = len(self.learners) // num_buffers
         for i in range(len(self.learners)):
-            batch_refs.append(self.memory.get_batch.remote(i, len(self.learners)))
+            memory = self.memories[i % num_buffers]
+            rank = i // num_buffers
+            batch_refs.append(memory.get_batch.remote(rank, world_size))
 
         lb_zip = zip(self.learners, batch_refs)
         learn_list = [learner.learn.remote(batch_ref) for learner, batch_ref in lb_zip]
@@ -363,9 +377,11 @@ class Runner:
 
     def _train_one_step(self):
         """Keep learner updates in flight and finish the oldest one."""
-        if not self.inflight_updates and not ray.get(self.memory.ready.remote()):
-            time.sleep(0.01)
-            return
+        if not self.inflight_updates:
+            ready = ray.get([memory.ready.remote() for memory in self.memories])
+            if not all(ready):
+                time.sleep(0.01)
+                return
 
         while self._can_submit():
             self._submit_update()
@@ -383,7 +399,10 @@ class Runner:
         self.trained_samples += sum(info["trained_samples"] for info in infos)
 
         self.weight_store.set.remote(weights_ref, self.version)
-        self.memory.on_learn.remote([info["memory"] for info in infos])
+        num_buffers = len(self.memories)
+        for i, memory in enumerate(self.memories):
+            memory_infos = [info["memory"] for info in infos[i::num_buffers]]
+            memory.on_learn.remote(memory_infos)
 
     def _log_info(self, force=False):
         """Collect runtime statistics, evaluate policy, and write training logs."""
@@ -391,7 +410,8 @@ class Runner:
         if log_start < self.next_log_time and not force:
             return
 
-        collected_data = ray.get(self.memory.stats.remote())["collected_data"]
+        stats = ray.get([memory.stats.remote() for memory in self.memories])
+        collected_data = sum(info["collected_data"] for info in stats)
 
         dt = log_start - self.last_log_time
         wall_time = log_start - self.start_time
