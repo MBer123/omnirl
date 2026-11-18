@@ -14,7 +14,7 @@ runner:
 
 learner:
   num_learners: 1
-  device: cpu
+  learner_device: cpu
 
 sampler:
   num_samplers: 1

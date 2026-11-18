@@ -212,7 +212,7 @@ env:
 
 ## 注意事项
 
-- `learner.device` 支持 `cpu`和 `gpu`。多个 CPU learner 使用 Gloo DDP；每个 GPU learner 需要一张 GPU。
+- `learner.learner_device` 支持 `cpu`和 `gpu`。多个 CPU learner 使用 Gloo DDP；每个 GPU learner 需要一张 GPU。
 - 在 `sampler` 中，通过 `num_sampler_gpus` 和 `num_samplers_per_gpu` 设置 GPU 数量及每卡进程数。
 - 在 `evaluator` 中，通过 `num_evaluator_gpus` 和 `num_evaluators_per_gpu` 设置 GPU 数量及每卡进程数。
 - sampler/evaluator 的 GPU 数量默认为零；超出配置容量的进程使用 CPU，GPU 数量为零时全部使用 CPU。

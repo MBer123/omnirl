@@ -212,7 +212,7 @@ Algorithms and runtime actors communicate only through this interface, so neithe
 
 ## Notes
 
-- `learner.device` supports `cpu` and `gpu`. Multiple CPU learners use Gloo DDP; each GPU learner requires one GPU.
+- `learner.learner_device` supports `cpu` and `gpu`. Multiple CPU learners use Gloo DDP; each GPU learner requires one GPU.
 - Under `sampler`, set `num_sampler_gpus` and `num_samplers_per_gpu` to configure the GPU count and processes per GPU.
 - Under `evaluator`, set `num_evaluator_gpus` and `num_evaluators_per_gpu` to configure the GPU count and processes per GPU.
 - Sampler/evaluator GPU counts default to zero. Processes beyond the configured capacity use CPU; with zero GPUs, all processes use CPU.

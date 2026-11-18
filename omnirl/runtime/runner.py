@@ -260,8 +260,6 @@ class Runner:
         # Load learner, sampler, evaluator, and memory arguments
         for role in ("learner", "sampler", "evaluator", "memory"):
             params = dict(runner_config.get(role) or {})
-            if role == "learner" and "device" in params:
-                params["learner_device"] = params.pop("device")
             runner_kwargs.update(params)
 
         # Load seed arguments

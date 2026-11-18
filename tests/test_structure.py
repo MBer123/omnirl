@@ -139,9 +139,6 @@ class StructureTest(unittest.TestCase):
                     self.assertLessEqual(set(config["runner"]), runner_params)
                     for role in ("learner", "sampler", "evaluator", "memory"):
                         fields = set(config.get(role) or {})
-                        if role == "learner" and "device" in fields:
-                            fields.remove("device")
-                            fields.add("learner_device")
                         self.assertLessEqual(fields, runner_params)
                     seed_fields = set(config.get("seed", {}))
                     allowed_seed_fields = {"learner", "sampler", "evaluator"}
@@ -154,7 +151,7 @@ class StructureTest(unittest.TestCase):
             runner_config = yaml.safe_load(file)
         with (example_dir / "ppo.yaml").open("r", encoding="utf-8") as file:
             agent_config = yaml.safe_load(file)
-        runner_config["learner"]["device"] = "gpu"
+        runner_config["learner"]["learner_device"] = "gpu"
         runner_config["memory"]["num_buffers"] = 2
         runner_config["sampler"].update(
             collection_fragment_length=8,
@@ -191,7 +188,8 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(captured_kwargs["learner_seed"], 0)
         self.assertEqual(captured_kwargs["sampler_seed"], 0)
         self.assertEqual(captured_kwargs["evaluator_seed"], 0)
-        self.assertEqual(runner_config["learner"], {"num_learners": 1, "device": "gpu"})
+        expected_learner_config = {"num_learners": 1, "learner_device": "gpu"}
+        self.assertEqual(runner_config["learner"], expected_learner_config)
 
     def test_evaluation_config_loading(self):
         config_path = CONFIG_ROOT / "cartpole" / "test.yaml"
