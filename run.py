@@ -51,7 +51,8 @@ def main():
     runner = Runner.from_config(agent, environment, runner_config, agent_config)
 
     if args.mode == "train":
-        with open(os.path.join(runner.ckpt_dir, "run_config.yaml"), "w") as f:
+        ckpt_path = os.path.dirname(runner.ckpt_path)
+        with open(os.path.join(ckpt_path, "run_config.yaml"), "w") as f:
             yaml.safe_dump({**agent_config, **runner_config}, f, sort_keys=False)
         runner.fit()
     else:
