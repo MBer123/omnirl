@@ -54,13 +54,61 @@ class ReplayBufferTest(unittest.TestCase):
         memory.add(make_rollout(1024, 64))
         for _ in range(8):
             self.assertTrue(memory.ready())
-            self.assertFalse(memory.can_sample(0))
+            self.assertTrue(memory.can_sample(0))
             batch = memory.get_batch(0, 1)
             self.assertEqual(len(batch["rewards"]), 256)
             memory.on_learn([{}])
         self.assertFalse(memory.ready())
         self.assertIsNone(memory.get_batch(0, 1))
         self.assertTrue(memory.can_sample(0))
+
+    def test_replay_ratio_allows_collection_during_learning(self):
+        cases = ((0.25, 128, 1), (2, 16, 1), (32, 1, 1), (32, 8, 8))
+        for buffer_class in (ReplayBuffer, PrioritizedReplayBuffer):
+            for ratio, fragment, updates_per_fragment in cases:
+                case = {"buffer": buffer_class.__name__, "ratio": ratio}
+                with self.subTest(**case, fragment=fragment):
+                    memory_kwargs = {
+                        "state_dim": 1,
+                        "state_dtype": np.float32,
+                        "action_dim": 2,
+                        "is_continuous": True,
+                        "batch_size": 32,
+                        "warmup_size": 64,
+                        "max_size": 64,
+                        "replay_ratio": ratio,
+                    }
+                    memory = buffer_class(**memory_kwargs)
+                    memory.add(make_rollout(0, 64))
+                    self.assertFalse(memory.ready())
+                    self.assertTrue(memory.can_sample(0))
+                    memory.add(make_rollout(64, fragment))
+
+                    for update in range(2 * updates_per_fragment):
+                        self.assertTrue(memory.ready())
+                        can_collect = update == 0 or update >= updates_per_fragment
+                        self.assertEqual(memory.can_sample(0), can_collect)
+                        batches = [memory.get_batch(rank, 2) for rank in range(2)]
+                        if update == 0:
+                            # The next fragment arrives before training completes.
+                            memory.add(make_rollout(64 + fragment, fragment))
+                            self.assertEqual(memory.replayed_size, 0)
+                            self.assertFalse(memory.can_sample(0))
+
+                        train_infos = []
+                        for batch in batches:
+                            train_info = {
+                                "indices": batch.get("indices", []),
+                                "generations": batch.get("generations", []),
+                                "td_errors": np.ones(len(batch["rewards"])),
+                            }
+                            train_infos.append(train_info)
+                        memory.on_learn(train_infos)
+                        self.assertEqual(memory.replayed_size, 32 * (update + 1))
+
+                    self.assertFalse(memory.ready())
+                    self.assertIsNone(memory.get_batch(0, 2))
+                    self.assertTrue(memory.can_sample(0))
 
     def test_replay_ratio_progress_with_fragments_and_multiple_ranks(self):
         for buffer_class in (ReplayBuffer, PrioritizedReplayBuffer):
@@ -96,7 +144,6 @@ class ReplayBufferTest(unittest.TestCase):
                                     rollout = make_rollout(start, fragment)
                                     memory.add(rollout)
                                 while memory.ready():
-                                    self.assertFalse(memory.can_sample(0))
                                     batches = [memory.get_batch(r, 2) for r in range(2)]
                                     sizes = [len(batch["rewards"]) for batch in batches]
                                     self.assertEqual(sizes, [2, 3])

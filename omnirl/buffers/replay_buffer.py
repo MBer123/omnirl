@@ -32,6 +32,7 @@ class ReplayBuffer(BaseBuffer):
         replay_ratio: float | None = None,
     ):
         self.replay_ratio = replay_ratio
+        self.fragment_size = collection_fragment_length
         self.batch_size = batch_size
         self.warmup_size = warmup_size
         self.max_size = max_size
@@ -95,6 +96,7 @@ class ReplayBuffer(BaseBuffer):
             memory[start:end] = values[:first_size]
             memory[:remaining_size] = values[first_size:]
 
+        self.fragment_size = count
         self.collected_size += count
         self.available_size = min(self.max_size, self.collected_size)
 
@@ -134,8 +136,8 @@ class ReplayBuffer(BaseBuffer):
         """Update internal state after the learner finishes one training step."""
         self.replayed_size += self.batch_size
 
-    def ready(self):
-        """Require both stored samples and credit for one whole global batch."""
+    def ready(self, extra_credit=0):
+        """Require stored samples and credit for a batch plus the extra margin."""
         batch_ok = self.available_size >= self.batch_size
         warmup_ok = self.collected_size >= self.warmup_size
 
@@ -144,7 +146,8 @@ class ReplayBuffer(BaseBuffer):
         budget_ok = True
         if self.replay_ratio is not None:
             replay_budget = self.replay_ratio * new_samples
-            budget_ok = self.replayed_size + self.batch_size <= replay_budget
+            required_size = self.batch_size + extra_credit
+            budget_ok = self.replayed_size + required_size <= replay_budget
         return batch_ok and warmup_ok and budget_ok
 
     def needs_backpressure(self):
@@ -152,8 +155,11 @@ class ReplayBuffer(BaseBuffer):
         return self.replay_ratio is not None
 
     def can_sample(self, version):
-        """Collect until there is enough credit to train another whole batch."""
-        return self.replay_ratio is None or not self.ready()
+        """Keep a fragment's replay credit available while collecting the next."""
+        if self.replay_ratio is None:
+            return True
+        extra_credit = max(self.batch_size, self.fragment_size * self.replay_ratio)
+        return not self.ready(extra_credit=extra_credit)
 
     def supports_prefetch(self):
         """Rate control uses one in-flight update so credit cannot be overspent."""
