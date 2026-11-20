@@ -1,6 +1,7 @@
 import tempfile
 import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock
 
 import numpy as np
@@ -81,16 +82,53 @@ class RuntimeTest(unittest.TestCase):
         sampler_class = Sampler.__ray_metadata__.modified_class
         sampler = sampler_class.__new__(sampler_class)
         sampler.policy = Mock()
+        sampler.pending_weights = None
         sampler.version = -1
 
-        sampler._sync_weights(store)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            sampler.pending_weights = sampler._sync_weights(store, executor)
+            sampler.pending_weights.result(timeout=10)
+            sampler.pending_weights = sampler._sync_weights(store, executor)
 
+        sampler.policy.set_weights.assert_called_once()
         loaded_weights, version = sampler.policy.set_weights.call_args.args
         torch.testing.assert_close(loaded_weights["weight"], weights["weight"])
         self.assertEqual(version, 1)
         self.assertEqual(sampler.version, 1)
-        sampler._sync_weights(store)
-        sampler.policy.set_weights.assert_called_once()
+
+    def test_sampler_prefetch_weights(self):
+        sampler_class = Sampler.__ray_metadata__.modified_class
+        sampler = sampler_class.__new__(sampler_class)
+        sampler.policy = Mock()
+        sampler.pending_weights = None
+        sampler.version = -1
+        sampler._fetch_weights = Mock(return_value=({"weight": 1}, 0))
+        store, executor = Mock(), Mock()
+
+        sampler.pending_weights = sampler._sync_weights(store, executor)
+        pending = sampler.pending_weights
+        sampler.policy.set_weights.assert_called_once_with({"weight": 1}, 0)
+        executor.submit.assert_called_once_with(sampler._fetch_weights, store, 0)
+
+        pending.done.return_value = False
+        self.assertIs(sampler._sync_weights(store, executor), pending)
+        pending.result.assert_not_called()
+        executor.submit.assert_called_once()
+        self.assertEqual(sampler.version, 0)
+
+        pending.done.return_value = True
+        pending.result.return_value = ({"weight": 2}, 3)
+        next_pending = Mock()
+        next_pending.done.return_value = False
+        executor.submit.return_value = next_pending
+        sampler.pending_weights = sampler._sync_weights(store, executor)
+        self.assertIs(sampler._sync_weights(store, executor), next_pending)
+        pending.result.assert_called_once_with()
+        sampler.policy.set_weights.assert_called_with({"weight": 2}, 3)
+        self.assertEqual(sampler.policy.set_weights.call_count, 2)
+        self.assertEqual(sampler.version, 3)
+        executor.submit.assert_called_with(sampler._fetch_weights, store, 3)
+        self.assertEqual(executor.submit.call_count, 2)
 
     def test_checkpoint_weight_store(self):
         weights = {"weight": torch.tensor([3.0])}

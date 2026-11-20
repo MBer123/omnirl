@@ -1,4 +1,5 @@
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import ray
 import torch
@@ -45,29 +46,45 @@ class Sampler:
         if seed is not None:
             set_global_seed(seed)
 
-        # Initialize abstract algorithm and environment components
+        # Initialize abstract algorithm
         self.policy = policy_cls(
             network_kwargs=network_kwargs,
             device=device,
             **action_spec,
             **policy_kwargs,
         )
+
+        # Initialize environment components
         self.collection = collection_cls(
             env_builder=env_builder,
             seed=seed,
             num_envs=num_envs_per_sampler,
         )
         self.fragment_length = collection_fragment_length
+        self.pending_weights = None
         self.version = -1
 
-    def _sync_weights(self, weight_store):
-        """Fetch and load newer policy weights from the weight store."""
-        result = ray.get(weight_store.get.remote(self.version))
+    @staticmethod
+    def _fetch_weights(weight_store, version):
+        """Fetch a newer CPU snapshot for the requested policy version."""
+        result = ray.get(weight_store.get.remote(version))
         weights_ref = result["weights_ref"]
-        if weights_ref is not None:
-            weights = ray.get(weights_ref)
-            self.version = result["version"]
-            self.policy.set_weights(weights, self.version)
+        weights = None if weights_ref is None else ray.get(weights_ref)
+        return weights, result["version"]
+
+    def _sync_weights(self, weight_store, executor):
+        """Load ready weights between fragments and prefetch the next snapshot."""
+        if self.pending_weights is None:
+            weights, version = self._fetch_weights(weight_store, self.version)
+        elif self.pending_weights.done():
+            weights, version = self.pending_weights.result()
+        else:
+            return self.pending_weights
+
+        if weights is not None:
+            self.policy.set_weights(weights, version)
+            self.version = version
+        return executor.submit(self._fetch_weights, weight_store, self.version)
 
     def _can_collect(self, memory):
         """Check dynamic admission only for buffers that need backpressure."""
@@ -80,14 +97,15 @@ class Sampler:
         pending_add = None
         self.needs_backpressure = ray.get(memory.needs_backpressure.remote())
 
-        while True:
-            self._sync_weights(weight_store)
-            if not self._can_collect(memory):
-                time.sleep(0.001)
-                continue
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            while True:
+                self.pending_weights = self._sync_weights(weight_store, executor)
+                if not self._can_collect(memory):
+                    time.sleep(0.001)
+                    continue
 
-            rollout = self.collection.run(self.policy, self.fragment_length)
-            rollout["version"] = self.version
-            if pending_add is not None:
-                ray.get(pending_add)
-            pending_add = memory.add.remote(rollout)
+                rollout = self.collection.run(self.policy, self.fragment_length)
+                rollout["version"] = self.version
+                if pending_add is not None:
+                    ray.get(pending_add)
+                pending_add = memory.add.remote(rollout)
