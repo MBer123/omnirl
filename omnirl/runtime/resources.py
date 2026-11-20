@@ -1,3 +1,5 @@
+import os
+
 import ray
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -129,4 +131,8 @@ class ResourceAllocator:
         strategy = pgStrategy(self.group, bundle_index)
         device = "gpu" if num_gpus else "cpu"
         option = {"num_cpus": 1, "num_gpus": num_gpus, "scheduling_strategy": strategy}
+        zero_copy_env = "RAY_ENABLE_ZERO_COPY_TORCH_TENSORS"
+        if zero_copy_env in os.environ:
+            env_vars = {zero_copy_env: os.environ[zero_copy_env]}
+            option["runtime_env"] = {"env_vars": env_vars}
         return device, option

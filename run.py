@@ -7,6 +7,7 @@ THREAD_ENV = {
     "OPENBLAS_NUM_THREADS": "1",
     "NUMEXPR_NUM_THREADS": "1",
     "MKL_DYNAMIC": "FALSE",
+    "RAY_ENABLE_ZERO_COPY_TORCH_TENSORS": "1",
 }
 
 os.environ.update(THREAD_ENV)
