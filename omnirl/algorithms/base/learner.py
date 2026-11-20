@@ -4,15 +4,21 @@ from abc import ABC, abstractmethod
 class BaseLearner(ABC):
     """Shared learner interface used by the training runner."""
 
+    version: int
+
+    @staticmethod
+    def _state_dict(model) -> dict:
+        """Return the model state as detached CPU tensors."""
+        return {k: v.detach().cpu() for k, v in model.state_dict().items()}
+
     @abstractmethod
     def get_weights(self) -> dict:
         """Export policy weights as detached CPU tensors."""
         raise NotImplementedError
 
-    @abstractmethod
     def get_version(self) -> int:
         """Return the current model version."""
-        raise NotImplementedError
+        return self.version
 
     @abstractmethod
     def learn(self, batch: dict) -> dict:

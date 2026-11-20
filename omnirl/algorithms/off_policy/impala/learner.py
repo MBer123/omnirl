@@ -144,17 +144,9 @@ class Learner(BaseLearner):
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=critic_lr)
 
-    def _state_dict(self, model):
-        """Return a detached CPU copy of model state_dict."""
-        return {k: v.detach().cpu() for k, v in model.state_dict().items()}
-
     def get_weights(self):
         """Export actor network weights."""
         return self._state_dict(self.actor)
-
-    def get_version(self):
-        """Export the current learner model version."""
-        return self.version
 
     def _evaluate_action(self, states_tensor, actions_tensor):
         """Evaluate action log probabilities and entropies under the current policy."""

@@ -134,11 +134,6 @@ class QuantileCriticNetwork(QCriticNetwork):
             nn.Linear(self.head_dim, num_quantiles),
         )
 
-    def forward(self, state, action):
-        """Return quantile values for continuous actions."""
-        x = self._encode(state, action)
-        return self.output(x)
-
 
 # ==================== Discret Q Networks ====================
 

@@ -165,17 +165,9 @@ class Learner(BaseLearner):
                 params = self.tau * source_params + (1 - self.tau) * target_params
                 target_params.data.copy_(params)
 
-    def _state_dict(self, model):
-        """Return a detached CPU copy of model state_dict."""
-        return {k: v.detach().cpu() for k, v in model.state_dict().items()}
-
     def get_weights(self):
         """Export actor network weights."""
         return self._state_dict(self.actor)
-
-    def get_version(self):
-        """Export the current learner model version."""
-        return self.version
 
     def learn(self, batch):
         """Sample a batch from replay buffer and update the online network."""
