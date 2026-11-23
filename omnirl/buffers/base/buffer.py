@@ -40,6 +40,11 @@ class BaseBuffer(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def needs_fresh_weights(self) -> bool:
+        """Return whether collection requires new weights after every update."""
+        raise NotImplementedError
+
+    @abstractmethod
     def stats(self) -> dict[str, int]:
         """Return statistics including available_data and collected_data."""
         raise NotImplementedError

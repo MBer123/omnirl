@@ -132,6 +132,10 @@ class RolloutBuffer(BaseBuffer):
         """Return False because batches must be collected after the last update."""
         return False
 
+    def needs_fresh_weights(self):
+        """Version-tracked rollouts require the latest learner weights."""
+        return self.track_version
+
     def _clear(self):
         """Clear all stored transitions in the rollout buffer."""
         self.available_chunks = 0

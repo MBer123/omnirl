@@ -165,6 +165,10 @@ class ReplayBuffer(BaseBuffer):
         """Rate control uses one in-flight update so credit cannot be overspent."""
         return self.replay_ratio is None
 
+    def needs_fresh_weights(self):
+        """Replay accepts samples collected with older policy weights."""
+        return False
+
     def stats(self):
         """Return statistics describing the current state of the replay buffer."""
         return {

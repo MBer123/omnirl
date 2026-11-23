@@ -7,6 +7,7 @@ runner:
   ckpt_dir: checkpoints/bipedal_walker
   max_updates: 100
   prefetch_depth: 1
+  weight_publish_interval: 1
   save_interval: 60
   log_interval: 10
   log_name: log.csv

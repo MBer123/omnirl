@@ -27,25 +27,26 @@ class Runner:
         env_config: Configuration for environment modules.
         ckpt_dir: Directory path to save model checkpoints.
         eval_model: Checkpoint file name of the model used for evaluation.
-        num_learners: Number of learner actors.
-        num_samplers: Number of sampler actors.
-        num_envs_per_sampler: Number of environments sharing each sampler policy.
-        collection_fragment_length: Steps collected per environment per transfer.
-        num_evaluators: Number of evaluator actors.
-        num_envs_per_evaluator: Number of environments sharing each evaluator policy.
-        num_episodes_per_env: Number of evaluation episodes per environment.
-        num_buffers: Buffers sharing configured batch, capacity, and warm-up sizes.
-        max_updates: Maximum number of learner updates.
-        prefetch_depth: Maximum number of learner updates kept in flight.
-        save_interval: Time in seconds between checkpoint saves.
-        log_interval: Time in seconds between logging events.
         log_name: Name of the training log file.
         load_checkpoint: Whether to resume training from an existing checkpoint.
+        num_learners: Number of learner actors.
+        num_samplers: Number of sampler actors.
+        num_evaluators: Number of evaluator actors.
+        num_buffers: Buffers sharing configured batch, capacity, and warm-up sizes.
+        num_envs_per_sampler: Number of environments sharing each sampler policy.
+        num_envs_per_evaluator: Number of environments sharing each evaluator policy.
+        collection_fragment_length: Steps collected per environment per transfer.
+        num_episodes_per_env: Number of evaluation episodes per environment.
+        max_updates: Maximum number of learner updates.
+        prefetch_depth: Maximum number of learner updates kept in flight.
         learner_device: Device selector used to run the learner.
         num_sampler_gpus: Number of GPUs reserved for samplers.
         num_samplers_per_gpu: Maximum number of samplers sharing each GPU.
         num_evaluator_gpus: Number of GPUs reserved for evaluators.
         num_evaluators_per_gpu: Maximum number of evaluators sharing each GPU.
+        save_interval: Time in seconds between checkpoint saves.
+        log_interval: Time in seconds between logging events.
+        weight_publish_interval: Learner updates between weight publications.
         learner_seed: Random seed used for learner.
         sampler_seed: Random seed used for sampler.
         evaluator_seed: Random seed used for evaluator.
@@ -59,25 +60,26 @@ class Runner:
         env_config,
         ckpt_dir: str = "checkpoints",
         eval_model: str | None = None,
-        num_learners: int = 1,
-        num_samplers: int = 1,
-        num_envs_per_sampler: int = 1,
-        collection_fragment_length: int = 1,
-        num_evaluators: int = 1,
-        num_envs_per_evaluator: int = 1,
-        num_episodes_per_env: int = 10,
-        num_buffers: int = 1,
-        max_updates: int = 10000000,
-        prefetch_depth: int = 1,
-        save_interval: int = 3600,
-        log_interval: int = 60,
         log_name: str = "log.csv",
         load_checkpoint: bool = True,
+        num_learners: int = 1,
+        num_samplers: int = 1,
+        num_evaluators: int = 1,
+        num_buffers: int = 1,
+        num_envs_per_sampler: int = 1,
+        num_envs_per_evaluator: int = 1,
+        collection_fragment_length: int = 1,
+        num_episodes_per_env: int = 10,
+        max_updates: int = 10000000,
+        prefetch_depth: int = 1,
         learner_device: str = "cpu",
         num_sampler_gpus: int = 0,
         num_samplers_per_gpu: int = 1,
         num_evaluator_gpus: int = 0,
         num_evaluators_per_gpu: int = 1,
+        save_interval: int = 3600,
+        log_interval: int = 60,
+        weight_publish_interval: int = 1,
         learner_seed: int | None = None,
         sampler_seed: int | None = None,
         evaluator_seed: int | None = None,
@@ -136,7 +138,10 @@ class Runner:
             _, options = self.resources.get_allocation("memory", i)
             memory = agent.Memory.options(**options)
             self.memories.append(memory.remote(**state_spec, **memory_kwargs))
-        supports_prefetch = ray.get(self.memories[0].supports_prefetch.remote())
+        memory = self.memories[0]
+        supports_prefetch = ray.get(memory.supports_prefetch.remote())
+        if weight_publish_interval > 1 and ray.get(memory.needs_fresh_weights.remote()):
+            weight_publish_interval = 1
 
         # Initialize learner
         self.learners = []
@@ -214,6 +219,7 @@ class Runner:
         # Initialize training configuration
         self.max_updates = max_updates
         self.prefetch_depth = max(1, prefetch_depth) if supports_prefetch else 1
+        self.weight_publish_interval = weight_publish_interval
         self.save_interval = save_interval
         self.log_interval = log_interval
         self.load_checkpoint = load_checkpoint
@@ -366,7 +372,11 @@ class Runner:
         lb_zip = zip(self.learners, batch_refs)
         learn_list = [learner.learn.remote(batch_ref) for learner, batch_ref in lb_zip]
 
-        weights_ref = self.learner.get_weights.remote()
+        version = self.version + len(self.inflight_updates) + 1
+        weights_ref = None
+        publish = version % self.weight_publish_interval == 0
+        if publish or version in (1, self.max_updates):
+            weights_ref = self.learner.get_weights.remote()
         self.inflight_updates.append((learn_list, weights_ref))
 
     def _can_submit(self):
@@ -399,7 +409,8 @@ class Runner:
         self.version = train_info["version"]
         self.trained_samples += sum(info["trained_samples"] for info in infos)
 
-        self.weight_store.set.remote([weights_ref], self.version)
+        if weights_ref is not None:
+            self.weight_store.set.remote([weights_ref], self.version)
         num_buffers = len(self.memories)
         for i, memory in enumerate(self.memories):
             memory_infos = [info["memory"] for info in infos[i::num_buffers]]

@@ -1,6 +1,7 @@
 import tempfile
 import threading
 import unittest
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock
 
@@ -95,6 +96,45 @@ class RuntimeTest(unittest.TestCase):
         torch.testing.assert_close(loaded_weights["weight"], weights["weight"])
         self.assertEqual(version, 1)
         self.assertEqual(sampler.version, 1)
+
+    def test_weight_publish_interval_with_prefetch(self):
+        runner = Runner.__new__(Runner)
+        runner.learner = Mock()
+        runner.learners = [runner.learner]
+        memory = Mock()
+        memory.ready.remote.return_value = ray.put(True)
+        runner.memories = [memory]
+        runner.weight_store = Mock()
+        runner.weight_publish_interval = 3
+        runner.prefetch_depth = 4
+        runner.max_updates = 8
+
+        for start, expected in ((0, [1, 3, 6, 8]), (4, [6, 8])):
+            with self.subTest(start=start):
+                runner.learner.reset_mock()
+                runner.weight_store.reset_mock()
+                memory.reset_mock()
+                runner.version = start
+                runner.trained_samples = 0
+                runner.inflight_updates = deque()
+                learn = runner.learner.learn.remote
+                learn.side_effect = [
+                    ray.put(dict(version=v, memory={}, log={}, trained_samples=1))
+                    for v in range(start + 1, runner.max_updates + 1)
+                ]
+                export = runner.learner.get_weights.remote
+                export.side_effect = lambda: ray.put(start + learn.call_count)
+
+                while runner.version < runner.max_updates:
+                    runner._train_one_step()
+
+                self.assertEqual(export.call_count, len(expected))
+                calls = runner.weight_store.set.remote.call_args_list
+                self.assertEqual([call.args[1] for call in calls], expected)
+                weights = ray.get([call.args[0][0] for call in calls])
+                self.assertEqual(weights, expected)
+                updates = runner.max_updates - start
+                self.assertEqual(memory.on_learn.remote.call_count, updates)
 
     def test_sampler_prefetch_weights(self):
         sampler_class = Sampler.__ray_metadata__.modified_class
