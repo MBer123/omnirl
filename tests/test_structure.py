@@ -76,7 +76,7 @@ class StructureTest(unittest.TestCase):
                 self.assertEqual(evaluation["env"], train["env"])
                 expected_ckpt_dir = train_runner["ckpt_dir"]
                 self.assertEqual(evaluation_runner["ckpt_dir"], expected_ckpt_dir)
-                expected_model = f"agent_{train_runner['max_updates']}.pth"
+                expected_model = f"agent_{train['learner']['max_updates']}.pth"
                 self.assertEqual(evaluation_runner["eval_model"], expected_model)
                 self.assertEqual(train["evaluator"]["num_envs_per_evaluator"], 1)
                 self.assertEqual(evaluation["evaluator"]["num_envs_per_evaluator"], 1)
@@ -201,7 +201,13 @@ class StructureTest(unittest.TestCase):
         self.assertEqual(captured_kwargs["learner_seed"], 0)
         self.assertEqual(captured_kwargs["sampler_seed"], 0)
         self.assertEqual(captured_kwargs["evaluator_seed"], 0)
-        expected_learner_config = {"num_learners": 1, "learner_device": "gpu"}
+        expected_learner_config = {
+            "num_learners": 1,
+            "max_updates": 100,
+            "prefetch_depth": 1,
+            "weight_publish_interval": 1,
+            "learner_device": "gpu",
+        }
         self.assertEqual(runner_config["learner"], expected_learner_config)
 
     def test_training_entry_saves_run_config(self):
