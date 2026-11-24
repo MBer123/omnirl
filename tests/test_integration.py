@@ -10,6 +10,50 @@ from omnirl.runtime.runner import Runner
 
 
 class IntegrationTest(unittest.TestCase):
+    def run_updates(
+        self,
+        agent,
+        agent_config,
+        num_envs,
+        fragment_length=1,
+        num_buffers=1,
+        max_updates=1,
+    ):
+        with tempfile.TemporaryDirectory() as ckpt_dir:
+            runner_kwargs = {
+                "agent": agent,
+                "environment": gymnasium,
+                "agent_config": agent_config,
+                "env_config": {"id": "CartPole-v1"},
+                "ckpt_dir": ckpt_dir,
+                "num_learners": num_buffers,
+                "num_samplers": num_buffers,
+                "num_buffers": num_buffers,
+                "num_envs_per_sampler": num_envs,
+                "collection_fragment_length": fragment_length,
+                "num_evaluators": 1,
+                "num_envs_per_evaluator": num_envs,
+                "num_episodes_per_env": 5,
+                "max_updates": max_updates,
+                "save_interval": 3600,
+                "log_interval": 3600,
+                "load_checkpoint": False,
+                "learner_device": "cpu",
+                "learner_seed": 0,
+                "sampler_seed": 0,
+                "evaluator_seed": 0,
+            }
+            runner = Runner(**runner_kwargs)
+            try:
+                runner.fit()
+                self.assertEqual(runner.version, max_updates)
+                self.assertEqual(len(runner.memories), num_buffers)
+                self.assertGreater(runner.trained_samples, 0)
+                self.assertEqual(runner.latest_eval_info["num_episodes"], num_envs * 5)
+                return runner.trained_samples
+            finally:
+                ray.shutdown()
+
     def test_replay_runner_updates(self):
         agent_config = {
             "learner": {"gamma": 0.99, "tau": 0.005, "lr": 0.0003},
@@ -56,50 +100,6 @@ class IntegrationTest(unittest.TestCase):
         rollout_kwargs.update(num_buffers=2, max_updates=2)
         trained_samples = self.run_updates(ppo, agent_config, **rollout_kwargs)
         self.assertEqual(trained_samples, 12)
-
-    def run_updates(
-        self,
-        agent,
-        agent_config,
-        num_envs,
-        fragment_length=1,
-        num_buffers=1,
-        max_updates=1,
-    ):
-        with tempfile.TemporaryDirectory() as ckpt_dir:
-            runner_kwargs = {
-                "agent": agent,
-                "environment": gymnasium,
-                "agent_config": agent_config,
-                "env_config": {"id": "CartPole-v1"},
-                "ckpt_dir": ckpt_dir,
-                "num_learners": num_buffers,
-                "num_samplers": num_buffers,
-                "num_buffers": num_buffers,
-                "num_envs_per_sampler": num_envs,
-                "collection_fragment_length": fragment_length,
-                "num_evaluators": 1,
-                "num_envs_per_evaluator": num_envs,
-                "num_episodes_per_env": 5,
-                "max_updates": max_updates,
-                "save_interval": 3600,
-                "log_interval": 3600,
-                "load_checkpoint": False,
-                "learner_device": "cpu",
-                "learner_seed": 0,
-                "sampler_seed": 0,
-                "evaluator_seed": 0,
-            }
-            runner = Runner(**runner_kwargs)
-            try:
-                runner.fit()
-                self.assertEqual(runner.version, max_updates)
-                self.assertEqual(len(runner.memories), num_buffers)
-                self.assertGreater(runner.trained_samples, 0)
-                self.assertEqual(runner.latest_eval_info["num_episodes"], num_envs * 5)
-                return runner.trained_samples
-            finally:
-                ray.shutdown()
 
 
 if __name__ == "__main__":

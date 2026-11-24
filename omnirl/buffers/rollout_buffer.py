@@ -110,6 +110,11 @@ class RolloutBuffer(BaseBuffer):
         }
         return batch
 
+    def _clear(self):
+        """Clear all stored transitions in the rollout buffer."""
+        self.available_chunks = 0
+        self.is_ready = False
+
     def on_learn(self, train_infos):
         """Update internal state after the learner finishes one training step."""
         self._clear()
@@ -135,11 +140,6 @@ class RolloutBuffer(BaseBuffer):
     def needs_fresh_weights(self):
         """Version-tracked rollouts require the latest learner weights."""
         return self.track_version
-
-    def _clear(self):
-        """Clear all stored transitions in the rollout buffer."""
-        self.available_chunks = 0
-        self.is_ready = False
 
     def stats(self):
         """Return statistics describing the current state of the rollout buffer."""

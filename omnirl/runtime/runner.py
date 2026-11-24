@@ -289,12 +289,6 @@ class Runner:
         self.log.info(f"|{string:^57}|")
         self.log.info("-" * 59)
 
-    def _log_groups(self, groups):
-        """Format grouped metrics and write to logger."""
-        lines = self._build_log_lines(groups)
-        for line in lines:
-            self.log.info(line)
-
     def _build_log_lines(self, groups):
         """Build aligned text lines for grouped metric logging."""
         key_width = 22
@@ -314,6 +308,12 @@ class Runner:
 
         lines.append("-" * total_width)
         return lines
+
+    def _log_groups(self, groups):
+        """Format grouped metrics and write to logger."""
+        lines = self._build_log_lines(groups)
+        for line in lines:
+            self.log.info(line)
 
     def _load_checkpoint(self):
         """Load learner checkpoint and synchronize weights."""

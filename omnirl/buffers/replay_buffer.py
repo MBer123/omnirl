@@ -100,6 +100,11 @@ class ReplayBuffer(BaseBuffer):
         self.collected_size += count
         self.available_size = min(self.max_size, self.collected_size)
 
+    def _sample(self, size):
+        """Return sampled indices and any sampling-specific batch fields."""
+        indices = self.rng.choice(self.available_size, size=size, replace=False)
+        return indices, {}
+
     def get_batch(self, rank, world_size):
         """Sample a rank-specific mini-batch from the replay buffer."""
         if not self.ready():
@@ -126,11 +131,6 @@ class ReplayBuffer(BaseBuffer):
             **extra_data,
         }
         return batch
-
-    def _sample(self, size):
-        """Return sampled indices and any sampling-specific batch fields."""
-        indices = self.rng.choice(self.available_size, size=size, replace=False)
-        return indices, {}
 
     def on_learn(self, train_infos):
         """Update internal state after the learner finishes one training step."""
@@ -236,17 +236,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         self.sum_tree = np.zeros(2 * self.tree_capacity, dtype=np.float64)
         self.min_tree = np.full(2 * self.tree_capacity, np.inf, dtype=np.float64)
 
-    def add(self, rollout):
-        """Store a rollout and initialize priorities for the written slots."""
-        super().add(rollout)
-
-        size = min(rollout["rewards"].size, self.max_size)
-        start = (self.collected_size - size) % self.max_size
-        indices = (start + np.arange(size)) % self.max_size
-        self.generation_memory[indices] += 1
-        priorities = np.full(size, self.max_priority, dtype=np.float32)
-        self._update_priorities(indices, priorities)
-
     def _update_priorities(self, indices, priorities):
         """Update unique slots and their ancestors in both priority trees."""
         self.priority_memory[indices] = priorities
@@ -262,6 +251,17 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             self.sum_tree[nodes] = self.sum_tree[left] + self.sum_tree[right]
             self.min_tree[nodes] = np.minimum(self.min_tree[left], self.min_tree[right])
             nodes = np.unique(nodes // 2)
+
+    def add(self, rollout):
+        """Store a rollout and initialize priorities for the written slots."""
+        super().add(rollout)
+
+        size = min(rollout["rewards"].size, self.max_size)
+        start = (self.collected_size - size) % self.max_size
+        indices = (start + np.arange(size)) % self.max_size
+        self.generation_memory[indices] += 1
+        priorities = np.full(size, self.max_priority, dtype=np.float32)
+        self._update_priorities(indices, priorities)
 
     def _sample(self, size):
         """Sample by priority and return slot versions and importance weights."""
